@@ -1,143 +1,337 @@
 import React, { useState } from 'react';
-import { View, Text, FlatList, TouchableOpacity, ScrollView } from 'react-native';
-import { useRouter, Href } from 'expo-router';
+import {
+  View, Text, FlatList, TouchableOpacity,
+  StyleSheet, Platform,
+} from 'react-native';
+import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { Colors } from '@/constants/colors';
 import { MOCK_ORDERS } from '@/constants/mockData';
-import { Button } from '@/components/ui';
 
 type OrderStatus = 'Active' | 'Delivered' | 'Cancelled';
+
+const STATUS_CONFIG = {
+  Active:    { text: '#92400E', bg: '#FEF3C7', dot: '#F59E0B', icon: 'clock'      },
+  Delivered: { text: '#065F46', bg: '#D1FAE5', dot: '#10B981', icon: 'check-circle'},
+  Cancelled: { text: '#991B1B', bg: '#FEE2E2', dot: '#EF4444', icon: 'x-circle'   },
+};
+
+function OrderCard({ item, onPress }: { item: typeof MOCK_ORDERS[0]; onPress: () => void }) {
+  const s = STATUS_CONFIG[item.status as OrderStatus] || STATUS_CONFIG.Active;
+  const hasEscrow = item.escrowStatus && item.escrowStatus !== 'N/A' && item.escrowStatus !== 'Refunded';
+
+  return (
+    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.88}>
+      {/* Top Row */}
+      <View style={styles.cardTop}>
+        <View>
+          <Text style={styles.orderId}>{item.id}</Text>
+          <Text style={styles.orderDate}>{item.date}</Text>
+        </View>
+        <View style={[styles.statusChip, { backgroundColor: s.bg }]}>
+          <View style={[styles.statusDot, { backgroundColor: s.dot }]} />
+          <Text style={[styles.statusText, { color: s.text }]}>{item.status}</Text>
+        </View>
+      </View>
+
+      {/* Farm Info */}
+      <View style={styles.farmRow}>
+        <View style={styles.farmAvatar}>
+          <Text style={{ fontSize: 16 }}>🌾</Text>
+        </View>
+        <View style={styles.farmInfo}>
+          <Text style={styles.farmName}>{item.farmName}</Text>
+          <Text style={styles.farmerName}>
+            <Feather name="user" size={10} color={Colors.textSecondary} /> {item.farmerName}
+          </Text>
+        </View>
+        <Text style={styles.orderTotal}>₨{item.total.toLocaleString()}</Text>
+      </View>
+
+      {/* Items Preview */}
+      <View style={styles.itemsRow}>
+        {item.items.slice(0, 2).map(prod => (
+          <View key={prod.id} style={styles.itemChip}>
+            <Text style={styles.itemEmoji}>{prod.emoji}</Text>
+            <Text style={styles.itemName}>{prod.name}</Text>
+          </View>
+        ))}
+        {item.items.length > 2 && (
+          <View style={styles.moreChip}>
+            <Text style={styles.moreText}>+{item.items.length - 2}</Text>
+          </View>
+        )}
+      </View>
+
+      {/* Escrow Badge */}
+      {hasEscrow && (
+        <View style={styles.escrowBanner}>
+          <Feather name="shield" size={12} color="#2563EB" />
+          <Text style={styles.escrowText}>{item.escrowStatus}</Text>
+        </View>
+      )}
+
+      {/* Progress Bar for Active */}
+      {item.status === 'Active' && (
+        <View style={styles.progressSection}>
+          <View style={styles.progressHeader}>
+            <Text style={styles.progressLabel}>Delivery Progress</Text>
+            <Text style={styles.progressPct}>{item.deliveryProgress}%</Text>
+          </View>
+          <View style={styles.progressTrack}>
+            <View style={[styles.progressFill, { width: `${item.deliveryProgress}%` as any }]} />
+          </View>
+        </View>
+      )}
+
+      {/* Action Row */}
+      <View style={styles.actionRow}>
+        <TouchableOpacity style={styles.actionBtn}>
+          <Feather name="refresh-cw" size={12} color={Colors.textSecondary} />
+          <Text style={styles.actionBtnText}>Reorder</Text>
+        </TouchableOpacity>
+        {item.status === 'Active' && (
+          <TouchableOpacity
+            style={[styles.actionBtn, styles.trackBtn]}
+            onPress={() => {}}
+          >
+            <Feather name="map-pin" size={12} color={Colors.primary} />
+            <Text style={[styles.actionBtnText, { color: Colors.primary }]}>Track</Text>
+          </TouchableOpacity>
+        )}
+        {item.status === 'Delivered' && (
+          <TouchableOpacity style={[styles.actionBtn, styles.rateBtn]}>
+            <Text style={styles.rateStar}>⭐</Text>
+            <Text style={[styles.actionBtnText, { color: '#92400E' }]}>Rate</Text>
+          </TouchableOpacity>
+        )}
+        <TouchableOpacity style={styles.detailBtn} onPress={onPress}>
+          <Text style={styles.detailBtnText}>View Details</Text>
+          <Feather name="arrow-right" size={13} color="#fff" />
+        </TouchableOpacity>
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+function EmptyOrders({ tab }: { tab: string }) {
+  const icons = { Active: '📦', Delivered: '✅', Cancelled: '❌' };
+  const msgs = {
+    Active: "No active orders right now.\nBrowse fresh produce and place your first order!",
+    Delivered: "No delivered orders yet.\nYour completed orders will appear here.",
+    Cancelled: "No cancelled orders. Great news!",
+  };
+
+  return (
+    <View style={styles.emptyState}>
+      <View style={styles.emptyIcon}>
+        <Text style={{ fontSize: 44 }}>{icons[tab as keyof typeof icons] ?? '📭'}</Text>
+      </View>
+      <Text style={styles.emptyTitle}>Nothing here yet</Text>
+      <Text style={styles.emptyMsg}>{msgs[tab as keyof typeof msgs] ?? ''}</Text>
+    </View>
+  );
+}
 
 export default function BuyerOrdersScreen() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<OrderStatus>('Active');
 
-  const filteredOrders = MOCK_ORDERS.filter(order => order.status === activeTab);
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'Delivered': return { text: 'text-green-700', bg: 'bg-green-100', dot: 'bg-green-500' };
-      case 'Active': return { text: 'text-amber-700', bg: 'bg-amber-100', dot: 'bg-amber-500' };
-      case 'Cancelled': return { text: 'text-red-700', bg: 'bg-red-100', dot: 'bg-red-500' };
-      default: return { text: 'text-gray-700', bg: 'bg-gray-100', dot: 'bg-gray-500' };
-    }
+  const counts = {
+    Active: MOCK_ORDERS.filter(o => o.status === 'Active').length,
+    Delivered: MOCK_ORDERS.filter(o => o.status === 'Delivered').length,
+    Cancelled: MOCK_ORDERS.filter(o => o.status === 'Cancelled').length,
   };
 
-  const renderOrderCard = ({ item }: { item: typeof MOCK_ORDERS[0] }) => {
-    const statusStyle = getStatusColor(item.status);
-    const hasMoreItems = item.items.length > 2;
-
-    return (
-      <TouchableOpacity 
-        onPress={() => router.push(`/(buyer)/orders/${item.id}` as any)}
-        className="bg-white rounded-2xl p-4 mb-4 shadow-sm border border-gray-100"
-      >
-        <View className="flex-row justify-between items-start mb-3">
-          <View>
-            <Text className="text-gray-400 text-[10px] font-medium uppercase tracking-wider">{item.id}</Text>
-            <Text className="text-textPrimary font-bold text-sm mt-0.5">{item.date}</Text>
-          </View>
-          <View className={`${statusStyle.bg} px-3 py-1 rounded-full flex-row items-center`}>
-            <View className={`w-1.5 h-1.5 rounded-full ${statusStyle.dot} mr-1.5`} />
-            <Text className={`${statusStyle.text} text-xs font-bold`}>{item.status}</Text>
-          </View>
-        </View>
-
-        {/* Items Summary */}
-        <View className="mb-4">
-          <View className="flex-row flex-wrap items-center">
-            {item.items.slice(0, 2).map((prod, idx) => (
-              <View key={prod.id} className="flex-row items-center mr-3 mb-1">
-                <Text className="text-sm mr-1">{prod.emoji}</Text>
-                <Text className="text-textSecondary text-xs font-medium">{prod.name} (x{prod.qty})</Text>
-              </View>
-            ))}
-            {hasMoreItems && (
-              <Text className="text-primary font-bold text-[10px] bg-primary-50 px-2 py-0.5 rounded-md">
-                +{item.items.length - 2} more
-              </Text>
-            )}
-          </View>
-          <Text className="text-textSecondary text-[10px] mt-1">
-            Sold by <Text className="text-textPrimary font-semibold">{item.farmerName}</Text> • {item.farmName}
-          </Text>
-        </View>
-
-        {/* Action Row */}
-        <View className="flex-row justify-between items-center pt-3 border-t border-gray-50">
-          <View className="flex-row gap-x-2">
-            <TouchableOpacity className="px-4 py-2 rounded-lg border border-gray-200">
-               <Text className="text-gray-600 font-bold text-xs">Reorder</Text>
-            </TouchableOpacity>
-            {item.status === 'Delivered' && (
-              <TouchableOpacity className="px-4 py-2 rounded-lg bg-warning-light border border-warning">
-                <Text className="text-warning-dark font-bold text-xs">Rate ★</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-          <Text className="text-primary font-bold text-lg">₨{item.total}</Text>
-        </View>
-
-        {/* Delivery Progress Bar for Active Orders */}
-        {item.status === 'Active' && (
-          <View className="mt-4 pt-3 border-t border-gray-50">
-            <View className="flex-row justify-between items-center mb-1.5">
-              <Text className="text-[10px] font-bold text-textSecondary uppercase">Delivery Progress</Text>
-              <Text className="text-[10px] font-bold text-primary">{item.deliveryProgress}%</Text>
-            </View>
-            <View className="h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
-               <View className="h-full bg-primary" style={{ width: `${item.deliveryProgress}%` }} />
-            </View>
-          </View>
-        )}
-      </TouchableOpacity>
-    );
-  };
+  const filtered = MOCK_ORDERS.filter(o => o.status === activeTab);
 
   return (
-    <View className="flex-1 bg-background pt-14">
+    <View style={styles.root}>
       {/* Header */}
-      <View className="px-6 mb-6 flex-row justify-between items-center">
+      <View style={styles.header}>
         <View>
-          <Text className="text-3xl font-bold text-textPrimary">My Orders</Text>
-          <Text className="text-textSecondary text-sm">View your purchase history</Text>
+          <Text style={styles.heading}>My Orders</Text>
+          <Text style={styles.subheading}>Track and manage your purchases</Text>
         </View>
-        <TouchableOpacity className="w-10 h-10 bg-white rounded-full items-center justify-center shadow-sm border border-gray-100">
-          <Feather name="sliders" size={18} color={Colors.textPrimary} />
+        <TouchableOpacity style={styles.notifBtn}>
+          <Feather name="bell" size={18} color={Colors.textPrimary} />
+          <View style={styles.notifDot} />
         </TouchableOpacity>
       </View>
 
       {/* Tabs */}
-      <View className="flex-row px-6 mb-6 border-b border-gray-100">
-        {(['Active', 'Delivered', 'Cancelled'] as OrderStatus[]).map((tab) => (
-          <TouchableOpacity 
+      <View style={styles.tabBar}>
+        {(['Active', 'Delivered', 'Cancelled'] as OrderStatus[]).map(tab => (
+          <TouchableOpacity
             key={tab}
             onPress={() => setActiveTab(tab)}
-            className={`mr-8 pb-3 relative`}
+            style={[styles.tab, activeTab === tab && styles.tabActive]}
           >
-            <Text className={`font-bold ${activeTab === tab ? 'text-primary' : 'text-textSecondary'}`}>
+            <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>
               {tab}
             </Text>
-            {activeTab === tab && (
-              <View className="absolute bottom-[-1px] left-0 right-0 h-0.5 bg-primary rounded-full" />
+            {counts[tab] > 0 && (
+              <View style={[styles.tabBadge, activeTab === tab && styles.tabBadgeActive]}>
+                <Text style={[styles.tabBadgeText, activeTab === tab && styles.tabBadgeTextActive]}>
+                  {counts[tab]}
+                </Text>
+              </View>
             )}
           </TouchableOpacity>
         ))}
       </View>
 
+      {/* List */}
       <FlatList
-        data={filteredOrders}
+        data={filtered}
         keyExtractor={item => item.id}
-        renderItem={renderOrderCard}
-        contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 40 }}
+        renderItem={({ item }) => (
+          <OrderCard
+            item={item}
+            onPress={() => router.push(`/(buyer)/orders/${item.id}` as any)}
+          />
+        )}
+        contentContainerStyle={styles.list}
         showsVerticalScrollIndicator={false}
-        ListEmptyComponent={
-          <View className="items-center justify-center py-20">
-            <Text className="text-5xl opacity-20 mb-4">📭</Text>
-            <Text className="text-textSecondary font-medium">No {activeTab.toLowerCase()} orders found</Text>
-          </View>
-        }
+        ListEmptyComponent={<EmptyOrders tab={activeTab} />}
       />
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  root: { flex: 1, backgroundColor: '#F8FAFB' },
+
+  header: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end',
+    paddingHorizontal: 20,
+    paddingTop: Platform.OS === 'ios' ? 60 : 48,
+    paddingBottom: 16,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1, borderBottomColor: '#F1F5F9',
+  },
+  heading: { fontSize: 24, fontWeight: '900', color: '#111827', letterSpacing: -0.5 },
+  subheading: { fontSize: 13, color: Colors.textSecondary, fontWeight: '500', marginTop: 2 },
+  notifBtn: {
+    width: 40, height: 40, borderRadius: 13,
+    backgroundColor: '#F8FAFB',
+    borderWidth: 1, borderColor: '#F1F5F9',
+    alignItems: 'center', justifyContent: 'center',
+    position: 'relative',
+  },
+  notifDot: {
+    position: 'absolute', top: 9, right: 9,
+    width: 7, height: 7, borderRadius: 3.5,
+    backgroundColor: '#EF4444',
+    borderWidth: 1.5, borderColor: '#fff',
+  },
+
+  // Tab Bar
+  tabBar: {
+    flexDirection: 'row',
+    backgroundColor: '#fff',
+    paddingHorizontal: 16,
+    paddingBottom: 0,
+    gap: 4,
+    borderBottomWidth: 1, borderBottomColor: '#F1F5F9',
+  },
+  tab: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 6, paddingVertical: 14,
+    borderBottomWidth: 2.5, borderBottomColor: 'transparent',
+  },
+  tabActive: { borderBottomColor: Colors.primary },
+  tabText: { fontSize: 13, fontWeight: '700', color: Colors.textSecondary },
+  tabTextActive: { color: Colors.primary },
+  tabBadge: {
+    minWidth: 18, height: 18, borderRadius: 9, paddingHorizontal: 5,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  tabBadgeActive: { backgroundColor: `${Colors.primary}18` },
+  tabBadgeText: { fontSize: 10, fontWeight: '800', color: Colors.textSecondary },
+  tabBadgeTextActive: { color: Colors.primary },
+
+  list: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 40 },
+
+  // Card
+  card: {
+    backgroundColor: '#fff',
+    borderRadius: 20, marginBottom: 12, padding: 16,
+    borderWidth: 1, borderColor: '#F1F5F9',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04, shadowRadius: 8, elevation: 2,
+  },
+  cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 },
+  orderId: { fontSize: 10, fontWeight: '800', color: Colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 },
+  orderDate: { fontSize: 14, fontWeight: '700', color: '#111827', marginTop: 2 },
+  statusChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20 },
+  statusDot: { width: 6, height: 6, borderRadius: 3 },
+  statusText: { fontSize: 11, fontWeight: '800' },
+
+  farmRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
+  farmAvatar: {
+    width: 40, height: 40, borderRadius: 12,
+    backgroundColor: '#F0FDF4',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  farmInfo: { flex: 1 },
+  farmName: { fontSize: 13, fontWeight: '700', color: '#111827' },
+  farmerName: { fontSize: 11, color: Colors.textSecondary, marginTop: 1 },
+  orderTotal: { fontSize: 17, fontWeight: '900', color: Colors.primary },
+
+  itemsRow: { flexDirection: 'row', gap: 6, marginBottom: 12, flexWrap: 'wrap' },
+  itemChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: '#F8FAFB', paddingHorizontal: 10, paddingVertical: 5,
+    borderRadius: 20, borderWidth: 1, borderColor: '#F1F5F9',
+  },
+  itemEmoji: { fontSize: 12 },
+  itemName: { fontSize: 11, fontWeight: '600', color: Colors.textSecondary },
+  moreChip: {
+    backgroundColor: `${Colors.primary}12`,
+    paddingHorizontal: 10, paddingVertical: 5,
+    borderRadius: 20,
+  },
+  moreText: { fontSize: 11, fontWeight: '800', color: Colors.primary },
+
+  escrowBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: '#EFF6FF', borderRadius: 10, padding: 8, marginBottom: 10,
+    borderWidth: 1, borderColor: '#BFDBFE',
+  },
+  escrowText: { fontSize: 11, fontWeight: '600', color: '#2563EB', flex: 1 },
+
+  progressSection: { marginBottom: 12 },
+  progressHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
+  progressLabel: { fontSize: 10, fontWeight: '700', color: Colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 },
+  progressPct: { fontSize: 10, fontWeight: '800', color: Colors.primary },
+  progressTrack: { height: 6, backgroundColor: '#F1F5F9', borderRadius: 99, overflow: 'hidden' },
+  progressFill: { flex: 1, backgroundColor: Colors.primary, borderRadius: 99 },
+
+  actionRow: { flexDirection: 'row', gap: 8, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#F8FAFB', alignItems: 'center' },
+  actionBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: 12, paddingVertical: 8,
+    backgroundColor: '#F8FAFB', borderRadius: 10,
+    borderWidth: 1, borderColor: '#F1F5F9',
+  },
+  trackBtn: { backgroundColor: `${Colors.primary}10`, borderColor: `${Colors.primary}20` },
+  rateBtn: { backgroundColor: '#FFFBEB', borderColor: '#FDE68A' },
+  actionBtnText: { fontSize: 11, fontWeight: '700', color: Colors.textSecondary },
+  rateStar: { fontSize: 11 },
+  detailBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 6, backgroundColor: '#111827', borderRadius: 10, paddingVertical: 9,
+  },
+  detailBtnText: { fontSize: 12, fontWeight: '800', color: '#fff' },
+
+  emptyState: { alignItems: 'center', paddingVertical: 48, paddingHorizontal: 32 },
+  emptyIcon: {
+    width: 80, height: 80, borderRadius: 24,
+    backgroundColor: '#F8FAFB', borderWidth: 1, borderColor: '#F1F5F9',
+    alignItems: 'center', justifyContent: 'center', marginBottom: 16,
+  },
+  emptyTitle: { fontSize: 18, fontWeight: '800', color: '#111827', marginBottom: 8 },
+  emptyMsg: { fontSize: 14, color: Colors.textSecondary, textAlign: 'center', lineHeight: 22 },
+});

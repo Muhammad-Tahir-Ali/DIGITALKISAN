@@ -4,7 +4,7 @@ import {
   FlatList, StyleSheet, Platform, Dimensions,
   NativeSyntheticEvent, NativeScrollEvent, Animated, Image
 } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { Colors } from '@/constants/colors';
 import { MOCK_CROPS } from '@/constants/mockData';
@@ -79,12 +79,13 @@ export default function ProductDetailScreen() {
 
   return (
     <View style={styles.root}>
+      <Stack.Screen options={{ headerShown: false }} />
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
 
         {/* ── IMAGE CAROUSEL ───────────────────────────────────────── */}
         <View style={styles.carouselWrap}>
           <FlatList
-            data={productImages}
+            data={productImages as any[]}
             horizontal
             pagingEnabled
             showsHorizontalScrollIndicator={false}
@@ -228,29 +229,39 @@ export default function ProductDetailScreen() {
 
       {/* ── FLOATING BOTTOM BAR ──────────────────────────────────── */}
       <View style={styles.bottomBar}>
-        {/* Quantity stepper */}
+        {/* Modern Quantity Stepper */}
         <View style={styles.stepper}>
           <TouchableOpacity
             onPress={() => setQty((q) => Math.max(1, q - 1))}
-            style={styles.stepBtn}
+            style={[styles.stepBtn, qty <= 1 && styles.stepBtnDisabled]}
+            activeOpacity={0.7}
           >
-            <Feather name="minus" size={18} color={qty > 1 ? Colors.textPrimary : Colors.border} />
+            <Feather name="minus" size={16} color={qty > 1 ? '#111827' : '#9CA3AF'} />
           </TouchableOpacity>
-          <Text style={styles.stepQty}>{qty}</Text>
+          
+          <Text style={styles.stepQty}>
+            {qty}<Text style={styles.stepUnit}>{product.unit}</Text>
+          </Text>
+          
           <TouchableOpacity
             onPress={() => setQty((q) => Math.min(product.stockKg, q + 1))}
             style={styles.stepBtn}
+            activeOpacity={0.7}
           >
-            <Feather name="plus" size={18} color={Colors.textPrimary} />
+            <Feather name="plus" size={16} color="#111827" />
           </TouchableOpacity>
         </View>
-        <Text style={styles.totalHint}>{qty} {product.unit}</Text>
 
-        {/* Add to Cart */}
+        {/* Premium Add to Cart */}
         <Animated.View style={{ transform: [{ scale: addedAnim }], flex: 1 }}>
-          <TouchableOpacity onPress={handleAddToCart} style={styles.addBtn} activeOpacity={0.8}>
-            <Feather name="shopping-cart" size={18} color="#fff" />
-            <Text style={styles.addBtnText}>Add · ₨{totalPrice.toLocaleString()}</Text>
+          <TouchableOpacity onPress={handleAddToCart} style={styles.addBtn} activeOpacity={0.88}>
+            <View style={styles.addBtnLeft}>
+              <Feather name="shopping-bag" size={16} color="#fff" />
+              <Text style={styles.addBtnText}>Add</Text>
+            </View>
+            <View style={styles.addBtnRight}>
+              <Text style={styles.addBtnPrice}>₨{totalPrice.toLocaleString()}</Text>
+            </View>
           </TouchableOpacity>
         </Animated.View>
       </View>
@@ -368,28 +379,44 @@ const styles = StyleSheet.create({
   bottomBar: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
     backgroundColor: '#fff',
-    borderTopWidth: 1, borderTopColor: Colors.border,
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: Platform.OS === 'ios' ? 34 : 16,
-    flexDirection: 'row', alignItems: 'center', gap: 12,
+    borderTopWidth: 1, borderTopColor: '#F1F5F9',
+    paddingHorizontal: 20,
+    paddingTop: 14,
+    paddingBottom: Platform.OS === 'ios' ? 36 : 18,
+    flexDirection: 'row', alignItems: 'center', gap: 14,
+    shadowColor: '#000', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.03, shadowRadius: 10, elevation: 10,
   },
   stepper: {
     flexDirection: 'row', alignItems: 'center',
-    borderWidth: 1, borderColor: Colors.border,
-    borderRadius: 14, overflow: 'hidden',
+    backgroundColor: '#F8FAFB',
+    borderWidth: 1, borderColor: '#F1F5F9',
+    borderRadius: 16, height: 54, paddingHorizontal: 6,
   },
-  stepBtn:  { width: 38, height: 46, alignItems: 'center', justifyContent: 'center' },
-  stepQty:  { width: 36, textAlign: 'center', fontSize: 16, fontWeight: '800', color: Colors.textPrimary },
-  totalHint:{ fontSize: 11, color: Colors.textSecondary, width: 36 },
+  stepBtn:  { 
+    width: 36, height: 36, borderRadius: 12, 
+    backgroundColor: '#fff', 
+    alignItems: 'center', justifyContent: 'center', 
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 4, elevation: 1 
+  },
+  stepBtnDisabled: { backgroundColor: 'transparent', elevation: 0, shadowOpacity: 0 },
+  stepQty:  { width: 48, textAlign: 'center', fontSize: 17, fontWeight: '900', color: '#111827' },
+  stepUnit: { fontSize: 11, fontWeight: '600', color: '#9CA3AF' },
+  
   addBtn: {
-    flex: 1, height: 50, borderRadius: 16,
-    backgroundColor: Colors.primary,
+    flex: 1, height: 54, borderRadius: 16,
+    backgroundColor: '#059669', // Emerald green
     flexDirection: 'row', alignItems: 'center',
-    justifyContent: 'center', gap: 8,
-    shadowColor: Colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35, shadowRadius: 10, elevation: 6,
+    justifyContent: 'space-between', 
+    paddingHorizontal: 6, paddingLeft: 20,
+    shadowColor: '#059669', shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.25, shadowRadius: 12, elevation: 6,
   },
-  addBtnText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  addBtnLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  addBtnText: { color: '#fff', fontSize: 15, fontWeight: '800' },
+  addBtnRight: { 
+    backgroundColor: 'rgba(255,255,255,0.2)', 
+    paddingHorizontal: 12, paddingVertical: 10, 
+    borderRadius: 12 
+  },
+  addBtnPrice: { color: '#fff', fontSize: 14, fontWeight: '900' },
 });

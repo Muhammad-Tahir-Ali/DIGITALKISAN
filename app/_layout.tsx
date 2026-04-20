@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { PaperProvider, MD3LightTheme } from 'react-native-paper';
 import { Theme } from '@/constants/theme';
 import { useAuth } from '@/hooks/useAuth';
+import { ToastProvider } from '@/components/shared/Toast';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -54,8 +55,11 @@ export default function RootLayout() {
   return (
     <QueryClientProvider client={queryClient}>
       <PaperProvider theme={paperTheme}>
-        <RootLayoutNav />
+        <ToastProvider>
+          <RootLayoutNav />
+        </ToastProvider>
       </PaperProvider>
     </QueryClientProvider>
   );
 }
+
