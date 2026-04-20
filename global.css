@@ -1,0 +1,27 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 
+  EXPO ROUTER WEB FIXES 
+  Ensures root content takes full height
+*/
+@layer base {
+  html, body, #root {
+    @apply h-full;
+    background-color: #FAFAF8;
+  }
+}
+
+/* PREMIUM DESIGN SYSTEM CLASSES */
+.card-glass {
+  @apply bg-white/80 backdrop-blur-md border border-white/20 shadow-sm;
+}
+
+.shadow-premium {
+  box-shadow: 0px 10px 20px rgba(0, 0, 0, 0.1);
+}
+
+.shadow-soft {
+  box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.05);
+}

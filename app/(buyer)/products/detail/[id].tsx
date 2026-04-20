@@ -1,0 +1,395 @@
+import React, { useState, useRef, useCallback } from 'react';
+import {
+  View, Text, TouchableOpacity, ScrollView,
+  FlatList, StyleSheet, Platform, Dimensions,
+  NativeSyntheticEvent, NativeScrollEvent, Animated, Image
+} from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Feather } from '@expo/vector-icons';
+import { Colors } from '@/constants/colors';
+import { MOCK_CROPS } from '@/constants/mockData';
+import { AiBadge } from '@/components/marketplace/AiBadge';
+import { useCartStore } from '@/store/cartStore';
+
+const { width: SW } = Dimensions.get('window');
+
+export default function ProductDetailScreen() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const router  = useRouter();
+
+  const product = MOCK_CROPS.find((p) => p.id === id) ?? MOCK_CROPS[0];
+  
+  // ── Setup images (prioritize real photos, fallback to emoji slides)
+  const productImages = product.images && product.images.length > 0 
+    ? product.images 
+    : [{ isEmoji: true, bg: '#F0FDF4' }];
+
+  const addItem     = useCartStore((s) => s.addItem);
+  const totalItems  = useCartStore((s) => s.totalItems);
+
+  const [qty,         setQty]         = useState(5);
+  const [slideIndex,  setSlideIndex]  = useState(0);
+  const [isWishlisted, setIsWishlisted] = useState(false);
+  const [addedAnim]   = useState(new Animated.Value(1));
+
+  const totalPrice = product.price * qty;
+
+  // ── Carousel scroll tracking
+  const onCarouselScroll = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const idx = Math.round(e.nativeEvent.contentOffset.x / SW);
+      setSlideIndex(idx);
+    },
+    [],
+  );
+
+  // ── Add to cart with pulse animation
+  const handleAddToCart = useCallback(() => {
+    addItem({
+      id:          product.id,
+      productId:   product.id,
+      name:        product.name,
+      price:       product.price,
+      quantity:    qty,
+      unit:        product.unit,
+      farmerId:    product.farmerId,
+      farmerName:  product.farmerName,
+      maxStock:    product.stockKg,
+    });
+    Animated.sequence([
+      Animated.timing(addedAnim, { toValue: 0.9, duration: 80,  useNativeDriver: true }),
+      Animated.spring(addedAnim,  { toValue: 1,   friction: 4,   useNativeDriver: true }),
+    ]).start();
+  }, [product, qty, addItem, addedAnim]);
+
+  // ── Star renderer
+  const Stars = ({ rating }: { rating: number }) => (
+    <View style={styles.stars}>
+      {Array.from({ length: 5 }).map((_, i) => (
+        <Feather
+          key={i}
+          name="star"
+          size={12}
+          color={i < Math.round(rating) ? Colors.amber[500] : Colors.border}
+        />
+      ))}
+      <Text style={styles.ratingText}>{rating} ({product.farmerReviews} reviews)</Text>
+    </View>
+  );
+
+  return (
+    <View style={styles.root}>
+      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+
+        {/* ── IMAGE CAROUSEL ───────────────────────────────────────── */}
+        <View style={styles.carouselWrap}>
+          <FlatList
+            data={productImages}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            onScroll={onCarouselScroll}
+            scrollEventThrottle={16}
+            keyExtractor={(_, i) => String(i)}
+            renderItem={({ item: img }) => (
+              <View style={[styles.slide, { width: SW }]}>
+                {img.isEmoji ? (
+                  <View style={[styles.slideEmojiWrap, { backgroundColor: img.bg }]}>
+                    <Text style={styles.slideEmoji}>{product.emoji}</Text>
+                  </View>
+                ) : (
+                  <Image 
+                    source={typeof img === 'string' ? { uri: img } : img} 
+                    style={styles.fullImage}
+                    resizeMode="cover"
+                  />
+                )}
+              </View>
+            )}
+          />
+
+          {/* Dot indicators */}
+          <View style={styles.dots}>
+            {productImages.length > 1 && productImages.map((_, i) => (
+              <View key={i} style={[styles.dot, i === slideIndex && styles.dotActive]} />
+            ))}
+          </View>
+
+          {/* Overlay action row */}
+          <View style={styles.overlayActions}>
+            <TouchableOpacity onPress={() => router.back()} style={styles.overlayBtn}>
+              <Feather name="arrow-left" size={20} color={Colors.textPrimary} />
+            </TouchableOpacity>
+            <View style={styles.overlayRight}>
+              <TouchableOpacity
+                onPress={() => setIsWishlisted((v) => !v)}
+                style={styles.overlayBtn}
+              >
+                <Feather
+                  name="heart"
+                  size={20}
+                  color={isWishlisted ? Colors.error : Colors.textPrimary}
+                />
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.overlayBtn}>
+                <Feather name="share-2" size={20} color={Colors.textPrimary} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => router.push('/(buyer)/cart')}
+                style={[styles.overlayBtn, { position: 'relative' }]}
+              >
+                <Feather name="shopping-cart" size={20} color={Colors.textPrimary} />
+                {totalItems > 0 && (
+                  <View style={styles.overlayBadge}>
+                    <Text style={styles.overlayBadgeText}>{totalItems}</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+
+        {/* ── CONTENT CARD ─────────────────────────────────────────── */}
+        <View style={styles.contentCard}>
+
+          {/* AI Badge + stock */}
+          <View style={styles.rowBetween}>
+            <AiBadge grade={product.quality} score={product.aiScore} />
+            <View style={styles.stockPill}>
+              <Feather name="package" size={11} color={Colors.success} />
+              <Text style={styles.stockText}>In Stock · {product.stockKg} {product.unit}</Text>
+            </View>
+          </View>
+
+          {/* Title + price */}
+          <View style={styles.titleRow}>
+            <View style={{ flex: 1, marginRight: 12 }}>
+              <Text style={styles.productName}>{product.name}</Text>
+              <Text style={styles.productSub}>Harvested · {product.farmerCity}</Text>
+            </View>
+            <View style={styles.priceBlock}>
+              <Text style={styles.bigPrice}>₨{product.price}</Text>
+              <Text style={styles.perUnit}>per {product.unit}</Text>
+            </View>
+          </View>
+
+          {/* ── FARMER CARD ─────────────────────────────────────────── */}
+          <View style={styles.farmerCard}>
+            <View style={styles.farmerAvatar}>
+              <Text style={{ fontSize: 22 }}>👨‍🌾</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.farmerName}>{product.farmerName}</Text>
+              <Stars rating={product.farmerRating} />
+              <Text style={styles.farmerLocation}>
+                <Feather name="map-pin" size={10} color={Colors.textSecondary} />
+                {' '}{product.farmerCity} · {product.distanceKm} km away
+              </Text>
+            </View>
+            <TouchableOpacity style={styles.viewProfileBtn}>
+              <Text style={styles.viewProfileText}>Profile</Text>
+              <Feather name="chevron-right" size={14} color={Colors.primary} />
+            </TouchableOpacity>
+          </View>
+
+          {/* ── AI QUALITY DETAIL ───────────────────────────────────── */}
+          <View style={styles.aiPanel}>
+            <View style={styles.aiPanelHeader}>
+              <Feather name="cpu" size={16} color="#9333EA" />
+              <Text style={styles.aiPanelTitle}>AI Quality Analysis</Text>
+            </View>
+            <View style={styles.aiMetrics}>
+              {[
+                { label: 'Size Uniformity',  val: product.aiScore - 2 },
+                { label: 'Freshness',        val: product.aiScore     },
+                { label: 'Blemish-Free',     val: product.aiScore + 1 },
+              ].map((m) => (
+                <View key={m.label} style={styles.aiMetric}>
+                  <View style={styles.aiMetricRow}>
+                    <Text style={styles.aiMetricLabel}>{m.label}</Text>
+                    <Text style={styles.aiMetricVal}>{Math.min(m.val, 99)}%</Text>
+                  </View>
+                  <View style={styles.aiBar}>
+                    <View style={[styles.aiBarFill, { width: `${Math.min(m.val, 99)}%` }]} />
+                  </View>
+                </View>
+              ))}
+            </View>
+          </View>
+
+          {/* ── DESCRIPTION ─────────────────────────────────────────── */}
+          <View style={styles.descSection}>
+            <Text style={styles.descTitle}>About this product</Text>
+            <Text style={styles.descText}>{product.description}</Text>
+          </View>
+
+        </View>
+      </ScrollView>
+
+      {/* ── FLOATING BOTTOM BAR ──────────────────────────────────── */}
+      <View style={styles.bottomBar}>
+        {/* Quantity stepper */}
+        <View style={styles.stepper}>
+          <TouchableOpacity
+            onPress={() => setQty((q) => Math.max(1, q - 1))}
+            style={styles.stepBtn}
+          >
+            <Feather name="minus" size={18} color={qty > 1 ? Colors.textPrimary : Colors.border} />
+          </TouchableOpacity>
+          <Text style={styles.stepQty}>{qty}</Text>
+          <TouchableOpacity
+            onPress={() => setQty((q) => Math.min(product.stockKg, q + 1))}
+            style={styles.stepBtn}
+          >
+            <Feather name="plus" size={18} color={Colors.textPrimary} />
+          </TouchableOpacity>
+        </View>
+        <Text style={styles.totalHint}>{qty} {product.unit}</Text>
+
+        {/* Add to Cart */}
+        <Animated.View style={{ transform: [{ scale: addedAnim }], flex: 1 }}>
+          <TouchableOpacity onPress={handleAddToCart} style={styles.addBtn} activeOpacity={0.8}>
+            <Feather name="shopping-cart" size={18} color="#fff" />
+            <Text style={styles.addBtnText}>Add · ₨{totalPrice.toLocaleString()}</Text>
+          </TouchableOpacity>
+        </Animated.View>
+      </View>
+    </View>
+  );
+}
+
+// ─── Styles ─────────────────────────────────────────────────────────────────
+const styles = StyleSheet.create({
+  root:   { flex: 1, backgroundColor: '#fff' },
+  scroll: { paddingBottom: 110 },
+
+  // Carousel
+  carouselWrap: { position: 'relative' },
+  slide: { height: 320, alignItems: 'center', justifyContent: 'center' },
+  fullImage: { width: '100%', height: '100%' },
+  slideEmojiWrap: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' },
+  slideEmoji: { fontSize: 120 },
+  dots: {
+    position: 'absolute', bottom: 14,
+    flexDirection: 'row', alignSelf: 'center', gap: 6,
+  },
+  dot:       { width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(0,0,0,0.2)' },
+  dotActive: { width: 18, backgroundColor: Colors.primary },
+
+  overlayActions: {
+    position: 'absolute', top: Platform.OS === 'ios' ? 54 : 40,
+    left: 16, right: 16,
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+  },
+  overlayRight: { flexDirection: 'row', gap: 8 },
+  overlayBtn: {
+    width: 38, height: 38, borderRadius: 19,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    alignItems: 'center', justifyContent: 'center',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.12, shadowRadius: 4, elevation: 3,
+  },
+  overlayBadge: {
+    position: 'absolute', top: -2, right: -2,
+    backgroundColor: Colors.error,
+    width: 16, height: 16, borderRadius: 8,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  overlayBadgeText: { color: '#fff', fontSize: 9, fontWeight: '800' },
+
+  // Content card
+  contentCard: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 28, borderTopRightRadius: 28,
+    marginTop: -24,
+    paddingHorizontal: 20, paddingTop: 26,
+  },
+  rowBetween: {
+    flexDirection: 'row', justifyContent: 'space-between',
+    alignItems: 'center', marginBottom: 16,
+  },
+  stockPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    backgroundColor: Colors.successLight,
+    paddingHorizontal: 10, paddingVertical: 5,
+    borderRadius: 20,
+  },
+  stockText: { fontSize: 11, fontWeight: '700', color: Colors.success },
+
+  // Title
+  titleRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20, alignItems: 'flex-start' },
+  productName: { fontSize: 22, fontWeight: '800', color: Colors.textPrimary, lineHeight: 28 },
+  productSub:  { fontSize: 12, color: Colors.textSecondary, marginTop: 4 },
+  priceBlock:  { alignItems: 'flex-end' },
+  bigPrice:    { fontSize: 26, fontWeight: '900', color: Colors.primary },
+  perUnit:     { fontSize: 11, color: Colors.textSecondary, fontWeight: '500' },
+
+  // Farmer
+  farmerCard: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: Colors.background,
+    borderRadius: 18, padding: 14, marginBottom: 20,
+    borderWidth: 1, borderColor: Colors.border, gap: 12,
+  },
+  farmerAvatar: {
+    width: 48, height: 48, borderRadius: 24,
+    backgroundColor: '#fff', borderWidth: 1, borderColor: Colors.border,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  farmerName:     { fontSize: 15, fontWeight: '700', color: Colors.textPrimary, marginBottom: 3 },
+  farmerLocation: { fontSize: 11, color: Colors.textSecondary, marginTop: 4 },
+  stars:          { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  ratingText:     { fontSize: 11, color: Colors.textSecondary, marginLeft: 4 },
+  viewProfileBtn: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  viewProfileText:{ fontSize: 12, fontWeight: '700', color: Colors.primary },
+
+  // AI Panel
+  aiPanel: {
+    backgroundColor: '#FAF5FF',
+    borderRadius: 16, padding: 16, marginBottom: 20,
+    borderWidth: 1, borderColor: '#E9D5FF',
+  },
+  aiPanelHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 },
+  aiPanelTitle:  { fontSize: 14, fontWeight: '800', color: '#6B21A8' },
+  aiMetrics: { gap: 10 },
+  aiMetric:  {},
+  aiMetricRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
+  aiMetricLabel: { fontSize: 12, color: '#7E22CE', fontWeight: '600' },
+  aiMetricVal:   { fontSize: 12, color: '#7E22CE', fontWeight: '800' },
+  aiBar: { height: 6, backgroundColor: '#E9D5FF', borderRadius: 3 },
+  aiBarFill: { height: '100%', backgroundColor: '#9333EA', borderRadius: 3 },
+
+  // Description
+  descSection: { marginBottom: 10 },
+  descTitle: { fontSize: 16, fontWeight: '800', color: Colors.textPrimary, marginBottom: 8 },
+  descText:  { fontSize: 14, color: Colors.textSecondary, lineHeight: 22 },
+
+  // Bottom bar
+  bottomBar: {
+    position: 'absolute', bottom: 0, left: 0, right: 0,
+    backgroundColor: '#fff',
+    borderTopWidth: 1, borderTopColor: Colors.border,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: Platform.OS === 'ios' ? 34 : 16,
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+  },
+  stepper: {
+    flexDirection: 'row', alignItems: 'center',
+    borderWidth: 1, borderColor: Colors.border,
+    borderRadius: 14, overflow: 'hidden',
+  },
+  stepBtn:  { width: 38, height: 46, alignItems: 'center', justifyContent: 'center' },
+  stepQty:  { width: 36, textAlign: 'center', fontSize: 16, fontWeight: '800', color: Colors.textPrimary },
+  totalHint:{ fontSize: 11, color: Colors.textSecondary, width: 36 },
+  addBtn: {
+    flex: 1, height: 50, borderRadius: 16,
+    backgroundColor: Colors.primary,
+    flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'center', gap: 8,
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35, shadowRadius: 10, elevation: 6,
+  },
+  addBtnText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+});
