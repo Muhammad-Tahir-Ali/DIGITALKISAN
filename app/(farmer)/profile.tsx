@@ -1,9 +1,29 @@
-import { View, Text, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, Alert, Platform } from 'react-native';
 import { useAuth } from '@/hooks/useAuth';
 import { Colors } from '@/constants/colors';
+import { useRouter } from 'expo-router';
 
 export default function FarmerProfile() {
   const { user, logout } = useAuth();
+  const router = useRouter();
+
+  const handleLogout = async () => {
+    const doLogout = async () => {
+      await logout();
+      router.replace('/');
+    };
+
+    if (Platform.OS === 'web') {
+      const confirmed = window.confirm('Are you sure you want to sign out?');
+      if (confirmed) doLogout();
+      return;
+    }
+
+    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Sign Out', style: 'destructive', onPress: doLogout },
+    ]);
+  };
 
   return (
     <View className="flex-1 bg-background">
@@ -31,10 +51,7 @@ export default function FarmerProfile() {
         ))}
 
         <TouchableOpacity
-          onPress={() => Alert.alert('Logout', 'Are you sure?', [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Logout', style: 'destructive', onPress: logout },
-          ])}
+          onPress={handleLogout}
           className="bg-red-50 rounded-2xl p-4 flex-row items-center gap-x-3 mt-4"
         >
           <Text className="text-xl">🚪</Text>

@@ -117,6 +117,7 @@ export const Colors = {
 
   // Brand
   primary: Green[700],
+  primaryMid: Green[600],  // for gradients / mid-tone
   primaryLight: Green[100],
   primaryDark: Green[900],
 
@@ -125,23 +126,31 @@ export const Colors = {
   secondaryDark: Amber[800],
 
   // Surfaces
-  background: '#FAFAF8',
+  background: '#F8FAFB',
+  backgroundAlt: '#F1F5F1',  // slightly tinted bg
   surface: '#FFFFFF',
   surfaceSecondary: Gray[50],
   surfaceTertiary: Gray[100],
+  surfaceElevated: '#FFFFFF', // cards that should stand out
+
+  // Glass / translucent
+  glassBg: 'rgba(255,255,255,0.08)',
+  glassBgStrong: 'rgba(255,255,255,0.16)',
+  glassBorder: 'rgba(255,255,255,0.14)',
 
   // Text
-  textPrimary: Gray[900],
-  textSecondary: Gray[500],
-  textTertiary: Gray[400],
+  textPrimary: '#111827',
+  textSecondary: '#6B7280',
+  textTertiary: '#9CA3AF',
   textInverse: '#FFFFFF',
   textPrimaryBrand: Green[700],
   textSecondaryBrand: Amber[600],
 
   // Borders
-  border: Gray[200],
-  borderStrong: Gray[300],
+  border: '#E8EDF2',
+  borderStrong: '#D1D9E0',
   borderBrand: Green[300],
+  cardBorder: '#F0F4F8',  // ultra-light card borders
 
   // Semantic shortcuts
   success: Semantic.success.DEFAULT,
@@ -158,7 +167,7 @@ export const Colors = {
 
   // Overlays
   overlay: 'rgba(0,0,0,0.5)',
-  overlayLight: 'rgba(0,0,0,0.15)',
+  overlayLight: 'rgba(0,0,0,0.12)',
 } as const;
 
 export type ColorToken = keyof typeof Colors;

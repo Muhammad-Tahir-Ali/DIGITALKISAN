@@ -3,30 +3,52 @@ import { View, Text, ScrollView, TouchableOpacity, Modal } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Feather, FontAwesome5 } from '@expo/vector-icons';
 import { Colors } from '@/constants/colors';
-import { MOCK_ORDERS } from '@/constants/mockData';
 import { Button } from '@/components/ui';
 import { EscrowBadge } from '@/components/checkout/EscrowBadge';
 import { StatusTimeline, TimelineStep } from '@/components/checkout/StatusTimeline';
+import orderService, { Order } from '@/services/order.service';
 
 export default function OrderDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  
-  const order = MOCK_ORDERS.find(o => o.id === id) || MOCK_ORDERS[0];
+  const [order, setOrder] = useState<Order | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  React.useEffect(() => {
+    const fetchOrder = async () => {
+      try {
+        const data = await orderService.getById(id as string);
+        setOrder(data);
+      } catch (err) {
+        console.error('Failed to load order details', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    if (id) fetchOrder();
+  }, [id]);
+
+  if (loading || !order) {
+    return (
+      <View className="flex-1 bg-background justify-center items-center">
+        <Text>Loading...</Text>
+      </View>
+    );
+  }
 
   // Map order status to timeline
-  const isDelivered = order.status === 'Delivered';
-  const isCancelled = order.status === 'Cancelled';
+  const isDelivered = order.status === 'delivered';
+  const isCancelled = order.status === 'cancelled';
   
-  // Decide active step based on deliveryProgress if Active
+  // Decide active step based on status
   let activeStep = 0;
   if (isDelivered) activeStep = 5;
   if (isCancelled) activeStep = -1;
-  if (order.status === 'Active') {
-     if (order.deliveryProgress >= 100) activeStep = 4;
-     else if (order.deliveryProgress >= 60) activeStep = 3;
-     else if (order.deliveryProgress >= 30) activeStep = 2;
-     else activeStep = 1;
+  if (order.status !== 'delivered' && order.status !== 'cancelled') {
+     if (order.status === 'in_transit') activeStep = 4;
+     else if (order.status === 'bidding') activeStep = 3;
+     else if (order.status === 'paid') activeStep = 2;
+     else activeStep = 1; // pending
   }
 
   const ORDER_TRACKER: TimelineStep[] = [
@@ -55,7 +77,7 @@ export default function OrderDetailScreen() {
           </TouchableOpacity>
           <View>
             <Text className="text-xl font-bold text-textPrimary">Order Details</Text>
-            <Text className="text-xs text-textSecondary uppercase tracking-widest">{order.id}</Text>
+            <Text className="text-xs text-textSecondary uppercase tracking-widest">{order._id.slice(-8)}</Text>
           </View>
         </View>
       </View>
@@ -64,7 +86,7 @@ export default function OrderDetailScreen() {
         
         {/* ── ESCROW BADGE ── */}
         <View className="mb-6 mt-2">
-            <EscrowBadge variant={getEscrowVariant()} size="lg" amount={order.total} />
+            <EscrowBadge variant={getEscrowVariant()} size="lg" amount={order.totalPrice} />
         </View>
 
         {/* ── TRACKING QUICK VIEW ── */}
@@ -72,9 +94,9 @@ export default function OrderDetailScreen() {
             <View className="bg-white rounded-2xl p-5 border border-gray-200 mb-6 shadow-sm">
                 <View className="flex-row justify-between items-center mb-4">
                     <Text className="font-bold text-base text-textPrimary">Delivery Status</Text>
-                    {order.status === 'Active' && (
+                    {order.status !== 'delivered' && order.status !== 'cancelled' && (
                        <TouchableOpacity 
-                         onPress={() => router.push(`/(buyer)/orders/tracking/${order.id}` as any)}
+                         onPress={() => router.push(`/(buyer)/orders/tracking/${order._id}` as any)}
                          className="flex-row items-center gap-x-1"
                        >
                            <Text className="text-primary font-bold text-xs uppercase tracking-wider">Live Track</Text>
@@ -88,27 +110,25 @@ export default function OrderDetailScreen() {
 
         {/* ── ITEMS ── */}
         <View className="bg-white rounded-2xl p-5 border border-gray-200 mb-6 shadow-sm">
-          <Text className="font-bold text-base text-textPrimary mb-4 border-b border-gray-100 pb-2">Items Ordered</Text>
-          {order.items.map((item, idx) => (
-            <View key={item.id} className={`flex-row items-center ${idx !== order.items.length - 1 ? 'mb-4 border-b border-gray-50 pb-4' : ''}`}>
-              <View className="w-12 h-12 rounded-xl bg-gray-50 items-center justify-center mr-4">
-                <Text className="text-2xl">{item.emoji}</Text>
-              </View>
-              <View className="flex-1">
-                <Text className="font-bold text-textPrimary text-sm">{item.name}</Text>
-                <Text className="text-textSecondary text-xs">Qty: {item.qty} {item.unit}</Text>
-              </View>
-              <View className="items-end">
-                  <Text className="font-bold text-textPrimary">₨{(item.price * item.qty).toLocaleString()}</Text>
-                  <Text className="text-textSecondary text-[10px]">₨{item.price}/{item.unit}</Text>
-              </View>
+          <Text className="font-bold text-base text-textPrimary mb-4 border-b border-gray-100 pb-2">Item Ordered</Text>
+          <View className="flex-row items-center mb-4 border-b border-gray-50 pb-4">
+            <View className="w-12 h-12 rounded-xl bg-gray-50 items-center justify-center mr-4">
+              <Text className="text-2xl">📦</Text>
             </View>
-          ))}
+            <View className="flex-1">
+              <Text className="font-bold text-textPrimary text-sm">{order.product?.title}</Text>
+              <Text className="text-textSecondary text-xs">Qty: {order.quantity}</Text>
+            </View>
+            <View className="items-end">
+                <Text className="font-bold text-textPrimary">₨{order.totalPrice.toLocaleString()}</Text>
+                <Text className="text-textSecondary text-[10px]">₨{order.product?.pricePerUnit}/unit</Text>
+            </View>
+          </View>
           
           <View className="w-full h-[1px] bg-gray-100 my-4" />
           <View className="flex-row justify-between items-center">
             <Text className="text-sm font-bold text-textPrimary">Total Amount</Text>
-            <Text className="text-xl font-bold text-primary">₨{order.total.toLocaleString()}</Text>
+            <Text className="text-xl font-bold text-primary">₨{order.totalPrice.toLocaleString()}</Text>
           </View>
         </View>
 
@@ -122,7 +142,7 @@ export default function OrderDetailScreen() {
             </View>
             <View className="flex-1">
               <Text className="text-xs text-textSecondary uppercase font-bold tracking-wider mb-0.5">Shipping Address</Text>
-              <Text className="font-medium text-textPrimary text-sm leading-5">{order.address}</Text>
+              <Text className="font-medium text-textPrimary text-sm leading-5">{order.shippingAddress?.address ?? 'No Address'}</Text>
             </View>
           </View>
 
@@ -132,8 +152,8 @@ export default function OrderDetailScreen() {
             </View>
             <View className="flex-1">
               <Text className="text-xs text-textSecondary uppercase font-bold tracking-wider mb-0.5">Fulfillment By</Text>
-              <Text className="font-medium text-textPrimary text-sm">{order.farmerName}</Text>
-              <Text className="text-textSecondary text-xs">{order.farmName}</Text>
+              <Text className="font-medium text-textPrimary text-sm">{order.farmer?.name ?? 'Farmer'}</Text>
+              <Text className="text-textSecondary text-xs">{order.farmer?.location?.address ?? ''}</Text>
             </View>
             <TouchableOpacity className="border border-purple-200 px-3 py-1.5 rounded-lg">
                 <Text className="text-purple-700 font-bold text-xs">Contact</Text>
@@ -148,12 +168,12 @@ export default function OrderDetailScreen() {
               <Text className="text-textSecondary">Method</Text>
               <View className="flex-row items-center gap-x-1.5">
                  <Feather name="lock" size={12} color={Colors.success} />
-                 <Text className="font-medium text-textPrimary">{order.paymentMethod} Escrow</Text>
+                 <Text className="font-medium text-textPrimary">DigitalKisan Escrow</Text>
               </View>
           </View>
           <View className="flex-row justify-between mb-3">
               <Text className="text-textSecondary">Transaction ID</Text>
-              <Text className="font-medium text-textPrimary">TXN-99482A1</Text>
+              <Text className="font-medium text-textPrimary">{order._id.toUpperCase()}</Text>
           </View>
           <View className="flex-row justify-between">
               <Text className="text-textSecondary">Funds Status</Text>
@@ -166,12 +186,12 @@ export default function OrderDetailScreen() {
       </ScrollView>
 
       {/* ── ACTIONS ── */}
-      {order.status === 'Active' && (
+      {order.status !== 'delivered' && order.status !== 'cancelled' && (
          <View className="px-6 py-4 bg-white border-t border-gray-100 pb-8 flex-row gap-x-4">
              <Button 
                 variant="primary" 
                 label="Confirm Delivery" 
-                onPress={() => router.push(`/(buyer)/orders/tracking/${order.id}` as any)}
+                onPress={() => router.push(`/(buyer)/orders/tracking/${order._id}` as any)}
                 fullWidth
              />
          </View>

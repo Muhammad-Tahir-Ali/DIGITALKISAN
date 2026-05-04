@@ -53,6 +53,14 @@ const orderService = {
   },
 
   /**
+   * Get a single order by ID
+   */
+  getById: async (id: string): Promise<Order> => {
+    const { data } = await api.get(`/orders/${id}`);
+    return data.data.order;
+  },
+
+  /**
    * Update order status (Farmer / Logistics only)
    * Triggers Escrow release automatically when status = 'delivered'
    */

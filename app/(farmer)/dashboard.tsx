@@ -5,7 +5,9 @@ import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors } from '@/constants/colors';
 import { useAuthStore } from '@/store/authStore';
-import { MOCK_ORDERS, MOCK_CROPS } from '@/constants/mockData';
+import userService, { DashboardStats } from '@/services/user.service';
+import orderService, { Order } from '@/services/order.service';
+import { SkeletonLoader, StatusBadge } from '@/components/ui';
 
 const { width } = Dimensions.get('window');
 
@@ -14,14 +16,34 @@ export default function FarmerDashboard() {
   const user = useAuthStore((s) => s.user);
   const setRole = useAuthStore((s) => s.setRole);
 
-  const isVerified = user?.isVerified ?? false;
+  const [stats, setStats] = React.useState<DashboardStats | null>(null);
+  const [orders, setOrders] = React.useState<Order[]>([]);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [statsData, ordersData] = await Promise.all([
+          userService.getDashboardStats(),
+          orderService.getMyOrders(),
+        ]);
+        setStats(statsData);
+        setOrders(ordersData);
+      } catch (error) {
+        console.error('Failed to load dashboard data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, []);
+
+  const pendingOrders = orders.filter((o) => o.status !== 'delivered' && o.status !== 'cancelled');
 
   const handleSwitchToBuyer = () => {
     setRole('buyer');
-    router.replace('/(buyer)/home');
+    router.replace('/(buyer)/home' as any);
   };
-
-  const pendingOrders = MOCK_ORDERS.filter((o) => o.status === 'Active');
 
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
@@ -53,7 +75,7 @@ export default function FarmerDashboard() {
             <Text style={styles.greeting}>Salaam,</Text>
             <Text style={styles.name}>{user?.name ?? 'Farmer'} 👋</Text>
           </View>
-          {isVerified && (
+          {user?.isVerified && (
             <View style={styles.verifiedBadge}>
               <Feather name="shield" size={12} color="#fff" />
               <Text style={styles.verifiedText}>Verified</Text>
@@ -64,17 +86,17 @@ export default function FarmerDashboard() {
         {/* Floating Stats Quick View */}
         <View style={styles.floatingStats}>
           <View style={styles.floatStatItem}>
-            <Text style={styles.floatStatVal}>₨ 12k</Text>
+            <Text style={styles.floatStatVal}>₨ {stats?.todaysEarnings.toLocaleString() ?? '0'}</Text>
             <Text style={styles.floatStatLabel}>Today</Text>
           </View>
           <View style={styles.floatDivider} />
           <View style={styles.floatStatItem}>
-            <Text style={styles.floatStatVal}>4</Text>
+            <Text style={styles.floatStatVal}>{stats?.newAdsToday ?? 0}</Text>
             <Text style={styles.floatStatLabel}>New Ads</Text>
           </View>
           <View style={styles.floatDivider} />
           <View style={styles.floatStatItem}>
-            <Text style={styles.floatStatVal}>98%</Text>
+            <Text style={styles.floatStatVal}>{stats?.rating.toFixed(1) ?? '0.0'}★</Text>
             <Text style={styles.floatStatLabel}>Rating</Text>
           </View>
         </View>
@@ -85,12 +107,16 @@ export default function FarmerDashboard() {
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Dashboard Overview</Text>
         </View>
-        <View style={styles.overviewGrid}>
-          <OverviewCard icon="box" color={Colors.agri.sabz} label="Total Products" value="12" subtext="In inventory" />
-          <OverviewCard icon="activity" color="#F59E0B" label="Active Orders" value="3" subtext="Post-escrow" />
-          <OverviewCard icon="check-circle" color="#10B981" label="Completed" value="28" subtext="Last 30 days" />
-          <OverviewCard icon="dollar-sign" color="#0EA5E9" label="Earnings" value="₨ 45k" subtext="Total paid out" onPress={() => router.push('/(farmer)/wallet' as any)} />
-        </View>
+        {loading ? (
+          <View style={{ paddingHorizontal: 4 }}><SkeletonLoader.StatGrid count={4} /></View>
+        ) : (
+          <View style={styles.overviewGrid}>
+            <OverviewCard icon="box" color={Colors.agri.sabz} label="Total Products" value={stats?.totalProducts.toString() ?? '0'} subtext="In inventory" />
+            <OverviewCard icon="activity" color="#F59E0B" label="Active Orders" value={stats?.activeOrdersCount.toString() ?? '0'} subtext="Post-escrow" />
+            <OverviewCard icon="check-circle" color="#10B981" label="Completed" value={stats?.completedOrdersCount.toString() ?? '0'} subtext="All time" />
+            <OverviewCard icon="dollar-sign" color="#0EA5E9" label="Earnings" value={`₨ ${stats?.totalEarnings.toLocaleString() ?? '0'}`} subtext="Total paid out" onPress={() => router.push('/(farmer)/wallet' as any)} />
+          </View>
+        )}
       </View>
 
       {/* ── 3. QUICK ACTIONS ───────────────────────────────────── */}
@@ -113,16 +139,20 @@ export default function FarmerDashboard() {
           </View>
         </View>
 
-        {pendingOrders.length > 0 ? (
+        {loading ? (
+          <View style={{ gap: 10, paddingHorizontal: 4 }}>
+            <SkeletonLoader.OrderList count={2} />
+          </View>
+        ) : pendingOrders.length > 0 ? (
           pendingOrders.map((order) => (
-            <TouchableOpacity key={order.id} style={styles.orderCard} onPress={() => router.push(`/(farmer)/orders/${order.id}` as any)}>
+            <TouchableOpacity key={order._id} style={styles.orderCard} onPress={() => router.push(`/(farmer)/orders/${order._id}` as any)}>
               <View style={styles.orderTop}>
-                <Text style={styles.orderId}>{order.id}</Text>
-                <Text style={styles.orderDate}>{order.date}</Text>
+                <Text style={styles.orderId}>{order._id.slice(-8).toUpperCase()}</Text>
+                <StatusBadge status={order.status} size="sm" />
               </View>
               <View style={styles.orderInfo}>
-                <Text style={styles.orderLabel}>{order.items.length} items • Transaction Secure</Text>
-                <Text style={styles.orderTotal}>₨ {order.total}</Text>
+                <Text style={styles.orderLabel}>{order.quantity} units • {order.product?.title}</Text>
+                <Text style={styles.orderTotal}>₨ {order.totalPrice.toLocaleString()}</Text>
               </View>
               <View style={styles.orderFooter}>
                 <Text style={styles.viewOrderBtn}>Process Order →</Text>

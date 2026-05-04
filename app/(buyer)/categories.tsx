@@ -6,8 +6,8 @@ import {
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { Colors } from '@/constants/colors';
-import { MOCK_FARMERS } from '@/constants/mockData';
 import { LinearGradient } from 'expo-linear-gradient';
+import userService, { Farmer } from '@/services/user.service';
 
 const { width } = Dimensions.get('window');
 
@@ -22,11 +22,22 @@ const CATEGORIES = [
   { id: '8', name: 'Seeds', emoji: '🌱', count: 22, desc: 'Planting Seeds', bg: '#F0FDF4', border: '#BBF7D0', icon: '#15803D' },
 ];
 
-const TOP_FARMERS = MOCK_FARMERS.slice(0, 4);
-
 export default function CategoriesScreen() {
   const router = useRouter();
   const [search, setSearch] = useState('');
+  const [topFarmers, setTopFarmers] = useState<Farmer[]>([]);
+
+  React.useEffect(() => {
+    const loadFarmers = async () => {
+      try {
+        const farmers = await userService.getTopFarmers();
+        setTopFarmers(farmers.slice(0, 4));
+      } catch (e) {
+        console.error('Failed to load top farmers', e);
+      }
+    };
+    loadFarmers();
+  }, []);
 
   const filtered = useMemo(() =>
     CATEGORIES.filter(c =>
@@ -155,8 +166,8 @@ export default function CategoriesScreen() {
             </View>
 
             <View style={styles.farmerList}>
-              {TOP_FARMERS.map((farmer, i) => (
-                <TouchableOpacity key={farmer.id} style={styles.farmerRow}>
+              {topFarmers.map((farmer, i) => (
+                <TouchableOpacity key={farmer._id} style={styles.farmerRow}>
                   <View style={styles.farmerRank}>
                     <Text style={styles.farmerRankText}>0{i + 1}</Text>
                   </View>
@@ -167,12 +178,12 @@ export default function CategoriesScreen() {
                     <Text style={styles.farmerName}>{farmer.name}</Text>
                     <View style={styles.farmerLocation}>
                       <Feather name="map-pin" size={10} color="#94A3B8" />
-                      <Text style={styles.farmerCity}>{farmer.city}</Text>
+                      <Text style={styles.farmerCity}>{farmer.location?.address ?? 'Pakistan'}</Text>
                     </View>
                   </View>
                   <View style={styles.farmerMeta}>
                     <View style={styles.ratingChip}>
-                      <Text style={styles.ratingText}>★ {farmer.rating}</Text>
+                      <Text style={styles.ratingText}>★ {farmer.rating.toFixed(1)}</Text>
                     </View>
                   </View>
                 </TouchableOpacity>

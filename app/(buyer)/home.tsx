@@ -2,7 +2,7 @@ import React, { useCallback, useState, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity,
   FlatList, ScrollView, StyleSheet, Platform,
-  StatusBar, Dimensions, ActivityIndicator,
+  StatusBar, Dimensions, SafeAreaView,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
@@ -13,6 +13,7 @@ import { ProductCard } from '@/components/marketplace/ProductCard';
 import { useCartStore } from '@/store/cartStore';
 import productService, { Product } from '@/services/product.service';
 import { useAuthStore } from '@/store/authStore';
+import { SkeletonLoader } from '@/components/ui';
 
 const PROMOS = [
   {
@@ -116,12 +117,9 @@ export default function BuyerHome() {
 
   return (
     <View style={styles.root}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FAFAF8" />
-      <ScrollView
-        contentContainerStyle={styles.scroll}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* ── HEADER ─────────────────────────────────────────────── */}
+      <StatusBar barStyle="dark-content" backgroundColor={Colors.background} />
+      <SafeAreaView style={styles.safeHeader}>
+        {/* ── HEADER ── */}
         <View style={styles.header}>
           <View style={styles.headerLeft}>
             <View style={styles.avatarWrap}>
@@ -129,7 +127,7 @@ export default function BuyerHome() {
               <View style={styles.verifiedDot} />
             </View>
             <View>
-              <Text style={styles.greeting}>Salaam 👋 {user?.name?.split(' ')[0] ?? ''}</Text>
+              <Text style={styles.greeting}>Salaam 👋 {user?.name?.split(' ')[0] ?? 'there'}</Text>
               <Text style={styles.brand}>DigitalKisan</Text>
             </View>
           </View>
@@ -151,31 +149,12 @@ export default function BuyerHome() {
             </TouchableOpacity>
           </View>
         </View>
+      </SafeAreaView>
 
-        {/* ── SEARCH BAR ─────────────────────────────────────────── */}
-        <View style={styles.searchSection}>
-          <TouchableOpacity
-            style={styles.searchBar}
-            activeOpacity={0.8}
-            onPress={() => router.push('/(buyer)/categories' as any)}
-          >
-            <Feather name="search" size={18} color={Colors.agri.sabz} />
-            <Text style={styles.searchPlaceholder}>Search crops, farmers or cities…</Text>
-            <View style={styles.searchFilter}>
-              <Feather name="sliders" size={16} color={Colors.textPrimary} />
-            </View>
-          </TouchableOpacity>
-
-          {/* Recent Searches Chips */}
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.recentRow}>
-            <Text style={styles.recentLabel}>Trends:</Text>
-            {RECENT_SEARCHES.map((txt) => (
-              <TouchableOpacity key={txt} style={styles.recentChip}>
-                <Text style={styles.recentText}>{txt}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+      >
 
         {/* ── PROMO BANNERS ───────────────────────────────────────── */}
         <View style={styles.promoSection}>
@@ -266,8 +245,9 @@ export default function BuyerHome() {
             </TouchableOpacity>
           </View>
           {loading ? (
-            <View style={{ alignItems: 'center', paddingVertical: 24 }}>
-              <ActivityIndicator color={Colors.primary} />
+            <View style={{ paddingHorizontal: 20, paddingTop: 8 }}>
+              <SkeletonLoader.Box height={160} borderRadius={16} style={{ marginBottom: 12 }} />
+              <SkeletonLoader.Box height={160} borderRadius={16} style={{ marginBottom: 12, marginLeft: 12 }} />
             </View>
           ) : (
             <FlatList
@@ -300,8 +280,8 @@ export default function BuyerHome() {
             </TouchableOpacity>
           </View>
           {loading ? (
-            <View style={{ alignItems: 'center', paddingVertical: 24 }}>
-              <ActivityIndicator color={Colors.primary} />
+            <View style={{ paddingHorizontal: 20 }}>
+              <SkeletonLoader.ProductGrid count={4} />
             </View>
           ) : (
             <View style={styles.grid}>
@@ -328,6 +308,8 @@ export default function BuyerHome() {
               )}
             </View>
           )}
+
+          {/* ── SEARCH BAR ── */}
         </View>
       </ScrollView>
     </View>
@@ -338,7 +320,12 @@ const SCREEN_W = Dimensions.get('window').width;
 const PROMO_WIDTH = Math.min(SCREEN_W - 60, 320);
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#F8FAFB' },
+  root: { flex: 1, backgroundColor: Colors.background },
+  safeHeader: {
+    backgroundColor: Colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.cardBorder,
+  },
   scroll: { paddingBottom: 60 },
 
   // Header

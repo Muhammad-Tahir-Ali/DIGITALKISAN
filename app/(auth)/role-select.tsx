@@ -1,119 +1,168 @@
 import React, { useEffect, useRef } from 'react';
-import { View, Text, TouchableOpacity, Animated, StyleSheet, Dimensions } from 'react-native';
+import {
+  View, Text, TouchableOpacity, Animated,
+  StyleSheet, Dimensions, Platform,
+} from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Feather } from '@expo/vector-icons';
 import { Colors } from '@/constants/colors';
 
-const { width } = Dimensions.get('window');
+const { width, height } = Dimensions.get('window');
 
-// ---------------------------------------------------------------------------
-// RoleSelect Screen
-// ---------------------------------------------------------------------------
+const ROLES = [
+  {
+    id: 'farmer',
+    title: 'I\'m a Farmer',
+    desc: 'Sell crops directly for better profit',
+    emoji: '🌾',
+    color: Colors.agri.sabz,
+    bg: '#E8F5E9',
+    features: ['AI crop grading', 'Direct payments', 'Logistics support'],
+    gradient: ['#064e3b', '#065f46'] as [string, string],
+  },
+  {
+    id: 'buyer',
+    title: 'I\'m a Buyer',
+    desc: 'Access fresh produce at fair prices',
+    emoji: '🧺',
+    color: Colors.agri.peela,
+    bg: '#FFF8E1',
+    features: ['Verified sellers', 'Escrow protection', 'Best market rates'],
+    gradient: ['#78350f', '#92400e'] as [string, string],
+  },
+];
+
 export default function RoleSelectScreen() {
   const router = useRouter();
-  const slideAnim = useRef(new Animated.Value(40)).current;
+
+  // Stagger entrance animations
+  const headerAnim = useRef(new Animated.Value(0)).current;
+  const card1Anim = useRef(new Animated.Value(60)).current;
+  const card2Anim = useRef(new Animated.Value(60)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
+  const card1Opacity = useRef(new Animated.Value(0)).current;
+  const card2Opacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    Animated.parallel([
-      Animated.timing(slideAnim, {
-        toValue: 0,
-        duration: 700,
-        useNativeDriver: true,
-      }),
-      Animated.timing(opacityAnim, {
-        toValue: 1,
-        duration: 700,
-        useNativeDriver: true,
-      }),
+    Animated.sequence([
+      Animated.parallel([
+        Animated.timing(opacityAnim, { toValue: 1, duration: 400, useNativeDriver: true }),
+        Animated.timing(headerAnim, { toValue: 1, duration: 500, useNativeDriver: true }),
+      ]),
+      Animated.parallel([
+        Animated.timing(card1Anim, { toValue: 0, duration: 400, useNativeDriver: true }),
+        Animated.timing(card1Opacity, { toValue: 1, duration: 400, useNativeDriver: true }),
+      ]),
+      Animated.parallel([
+        Animated.timing(card2Anim, { toValue: 0, duration: 400, useNativeDriver: true }),
+        Animated.timing(card2Opacity, { toValue: 1, duration: 400, useNativeDriver: true }),
+      ]),
     ]).start();
   }, []);
 
-  const navigateToAuth = (role: string) => {
-    // Navigate to unified auth screen with role param
-    router.push({ pathname: '/(auth)/login', params: { role } });
+  const cardAnims = [
+    { translateY: card1Anim, opacity: card1Opacity },
+    { translateY: card2Anim, opacity: card2Opacity },
+  ];
+
+  const navigateTo = (roleId: string) => {
+    router.push({ pathname: '/(auth)/register', params: { role: roleId } });
   };
 
   return (
-    <View style={styles.container}>
+    <View style={styles.root}>
+      {/* ── HERO TOP ── */}
       <LinearGradient
-        colors={['#FFFFFF', '#F8FAF8', '#F1F5F1']}
-        style={StyleSheet.absoluteFill}
-      />
+        colors={['#052e16', '#14532d', '#166534']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.hero}
+      >
+        {/* Decorative blobs */}
+        <View style={styles.blob1} />
+        <View style={styles.blob2} />
 
-      {/* Decorative top circle */}
-      <View style={styles.topCircle} />
-
-      <View style={styles.content}>
-        {/* Header Section */}
-        <View style={styles.header}>
-          <View style={styles.logoBadge}>
-            <Text style={{ fontSize: 32 }}>🌾</Text>
+        <Animated.View style={[styles.heroContent, { opacity: opacityAnim }]}>
+          {/* Logo */}
+          <View style={styles.logoWrap}>
+            <Text style={styles.logoEmoji}>🌾</Text>
           </View>
-          <Text style={styles.title}>DigitalKisan</Text>
-          <Text style={styles.subtitle}>Empowering Pakistan's Agriculture</Text>
-        </View>
+          <Text style={styles.heroTitle}>DigitalKisan</Text>
+          <Text style={styles.heroSubtitle}>Empowering Pakistan's Agriculture</Text>
 
-        <Text style={styles.selectionPrompt}>Choose how you want to join us:</Text>
-
-        <Animated.View
-          style={{
-            opacity: opacityAnim,
-            transform: [{ translateY: slideAnim }],
-            width: '100%',
-          }}
-        >
-          {/* Farmer Card */}
-          <TouchableOpacity
-            style={[styles.card, styles.farmerCard]}
-            activeOpacity={0.9}
-            onPress={() => navigateToAuth('farmer')}
-          >
-            <View style={styles.cardContent}>
-              <View style={[styles.iconWrap, { backgroundColor: '#E8F5E9' }]}>
-                <Feather name="box" size={24} color={Colors.agri.sabz} />
+          {/* Trust Pills */}
+          <View style={styles.trustRow}>
+            {['10K+ Farmers', 'AI Grading', 'Secure Escrow'].map(t => (
+              <View key={t} style={styles.trustPill}>
+                <Text style={styles.trustText}>{t}</Text>
               </View>
-              <View style={styles.cardInfo}>
-                <Text style={styles.cardTitle}>I am a Farmer</Text>
-                <Text style={styles.cardDesc}>Sell your crops directly for better profit.</Text>
-              </View>
-              <Feather name="arrow-right" size={20} color={Colors.agri.sabz} />
-            </View>
-          </TouchableOpacity>
-
-          {/* Buyer Card */}
-          <TouchableOpacity
-            style={[styles.card, styles.buyerCard]}
-            activeOpacity={0.9}
-            onPress={() => navigateToAuth('buyer')}
-          >
-            <View style={styles.cardContent}>
-              <View style={[styles.iconWrap, { backgroundColor: '#FFF8E1' }]}>
-                <Feather name="shopping-cart" size={24} color={Colors.agri.peela} />
-              </View>
-              <View style={styles.cardInfo}>
-                <Text style={styles.cardTitle}>I am a Buyer</Text>
-                <Text style={styles.cardDesc}>Access fresh, quality produce at fair rates.</Text>
-              </View>
-              <Feather name="arrow-right" size={20} color={Colors.agri.peela} />
-            </View>
-          </TouchableOpacity>
-
-          {/* More Roles Link */}
-          <TouchableOpacity 
-            style={styles.moreRolesBtn}
-            onPress={() => navigateToAuth('logistics')}
-          >
-            <Text style={styles.moreRolesText}>Are you a Logistics Partner? Join Here</Text>
-          </TouchableOpacity>
+            ))}
+          </View>
         </Animated.View>
+      </LinearGradient>
 
-        {/* Footer */}
-        <View style={styles.footer}>
-          <Text style={styles.footerText}>Already have an account? </Text>
+      {/* ── BOTTOM SHEET ── */}
+      <View style={styles.sheet}>
+        <Text style={styles.sheetHeading}>Choose your role</Text>
+        <Text style={styles.sheetSub}>Join thousands of farmers and buyers across Pakistan</Text>
+
+        {ROLES.map((role, idx) => (
+          <Animated.View
+            key={role.id}
+            style={{
+              opacity: cardAnims[idx].opacity,
+              transform: [{ translateY: cardAnims[idx].translateY }],
+            }}
+          >
+            <TouchableOpacity
+              style={[styles.roleCard, { borderLeftColor: role.color }]}
+              activeOpacity={0.85}
+              onPress={() => navigateTo(role.id)}
+            >
+              {/* Icon */}
+              <View style={[styles.roleIconWrap, { backgroundColor: role.bg }]}>
+                <Text style={styles.roleEmoji}>{role.emoji}</Text>
+              </View>
+
+              {/* Info */}
+              <View style={styles.roleInfo}>
+                <Text style={styles.roleTitle}>{role.title}</Text>
+                <Text style={styles.roleDesc}>{role.desc}</Text>
+                {/* Feature list */}
+                <View style={styles.featureRow}>
+                  {role.features.map(f => (
+                    <View key={f} style={[styles.featurePill, { backgroundColor: role.bg }]}>
+                      <Feather name="check" size={9} color={role.color} />
+                      <Text style={[styles.featureText, { color: role.color }]}>{f}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+
+              {/* Arrow */}
+              <View style={[styles.arrowWrap, { backgroundColor: role.bg }]}>
+                <Feather name="arrow-right" size={18} color={role.color} />
+              </View>
+            </TouchableOpacity>
+          </Animated.View>
+        ))}
+
+        {/* Logistics */}
+        <TouchableOpacity
+          style={styles.logisticsBtn}
+          onPress={() => navigateTo('logistics')}
+        >
+          <Feather name="truck" size={14} color={Colors.textSecondary} />
+          <Text style={styles.logisticsText}>Logistics Partner? Join here</Text>
+          <Feather name="chevron-right" size={14} color={Colors.textTertiary} />
+        </TouchableOpacity>
+
+        {/* Sign In */}
+        <View style={styles.signinRow}>
+          <Text style={styles.signinText}>Already have an account? </Text>
           <TouchableOpacity onPress={() => router.replace('/(auth)/login')}>
-            <Text style={styles.loginLink}>Sign In</Text>
+            <Text style={styles.signinLink}>Sign In</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -121,136 +170,128 @@ export default function RoleSelectScreen() {
   );
 }
 
+const HERO_HEIGHT = height * 0.38;
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-  topCircle: {
-    position: 'absolute',
-    top: -width * 0.4,
-    right: -width * 0.2,
-    width: width * 1.2,
-    height: width * 1.2,
-    borderRadius: width * 0.6,
-    backgroundColor: Colors.agri.sabzLight + '40', // 25% opacity
-  },
-  content: {
-    flex: 1,
+  root: { flex: 1, backgroundColor: Colors.background },
+
+  // Hero
+  hero: {
+    height: HERO_HEIGHT,
+    paddingTop: Platform.OS === 'ios' ? 60 : 48,
     paddingHorizontal: 28,
-    paddingTop: 80,
-    alignItems: 'center',
+    overflow: 'hidden',
   },
-  header: {
-    alignItems: 'center',
-    marginBottom: 48,
+  blob1: {
+    position: 'absolute', top: -40, right: -40,
+    width: 180, height: 180, borderRadius: 90,
+    backgroundColor: 'rgba(255,255,255,0.06)',
   },
-  logoBadge: {
-    width: 72,
-    height: 72,
-    borderRadius: 24,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    elevation: 4,
+  blob2: {
+    position: 'absolute', bottom: -30, left: -30,
+    width: 120, height: 120, borderRadius: 60,
+    backgroundColor: 'rgba(255,255,255,0.04)',
   },
-  title: {
-    fontSize: 32,
-    fontWeight: '900',
-    color: Colors.textPrimary,
-    letterSpacing: -1,
+  heroContent: { alignItems: 'center' },
+  logoWrap: {
+    width: 72, height: 72, borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
+    alignItems: 'center', justifyContent: 'center',
+    marginBottom: 14,
   },
-  subtitle: {
-    fontSize: 14,
-    color: Colors.textSecondary,
-    fontWeight: '500',
-    marginTop: 4,
+  logoEmoji: { fontSize: 34 },
+  heroTitle: {
+    fontSize: 30, fontWeight: '900', color: '#fff',
+    letterSpacing: -0.8, marginBottom: 4,
   },
-  selectionPrompt: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: Colors.textSecondary,
-    textTransform: 'uppercase',
-    letterSpacing: 1.5,
-    marginBottom: 20,
-    alignSelf: 'flex-start',
+  heroSubtitle: {
+    fontSize: 13, fontWeight: '500',
+    color: 'rgba(255,255,255,0.65)', marginBottom: 18,
   },
-  card: {
-    backgroundColor: '#fff',
-    borderRadius: 24,
-    marginBottom: 16,
-    padding: 20,
+  trustRow: { flexDirection: 'row', gap: 8 },
+  trustPill: {
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    paddingHorizontal: 10, paddingVertical: 4,
+    borderRadius: 20, borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+  },
+  trustText: { color: 'rgba(255,255,255,0.85)', fontSize: 10, fontWeight: '700' },
+
+  // Sheet
+  sheet: {
+    flex: 1,
+    backgroundColor: Colors.background,
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    marginTop: -24,
+    paddingTop: 28,
+    paddingHorizontal: 20,
+    paddingBottom: 40,
+  },
+  sheetHeading: {
+    fontSize: 22, fontWeight: '900', color: Colors.textPrimary,
+    letterSpacing: -0.5, marginBottom: 4,
+  },
+  sheetSub: {
+    fontSize: 13, color: Colors.textSecondary,
+    fontWeight: '500', marginBottom: 20,
+  },
+
+  // Role Card
+  roleCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: 20, padding: 16,
+    flexDirection: 'row', alignItems: 'center',
+    marginBottom: 12,
+    borderWidth: 1, borderColor: Colors.cardBorder,
+    borderLeftWidth: 4,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 3,
-    borderWidth: 1,
-    borderColor: '#F1F5F9',
+    shadowOpacity: 0.05, shadowRadius: 8, elevation: 2,
   },
-  farmerCard: {
-    borderLeftWidth: 6,
-    borderLeftColor: Colors.agri.sabz,
+  roleIconWrap: {
+    width: 52, height: 52, borderRadius: 16,
+    alignItems: 'center', justifyContent: 'center',
+    marginRight: 14,
   },
-  buyerCard: {
-    borderLeftWidth: 6,
-    borderLeftColor: Colors.agri.peela,
+  roleEmoji: { fontSize: 26 },
+  roleInfo: { flex: 1 },
+  roleTitle: {
+    fontSize: 16, fontWeight: '800',
+    color: Colors.textPrimary, marginBottom: 2,
   },
-  cardContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  roleDesc: {
+    fontSize: 12, color: Colors.textSecondary,
+    fontWeight: '500', marginBottom: 8,
   },
-  iconWrap: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 16,
+  featureRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 4 },
+  featurePill: {
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    paddingHorizontal: 7, paddingVertical: 3, borderRadius: 20,
   },
-  cardInfo: {
-    flex: 1,
+  featureText: { fontSize: 9, fontWeight: '700' },
+  arrowWrap: {
+    width: 36, height: 36, borderRadius: 12,
+    alignItems: 'center', justifyContent: 'center',
+    marginLeft: 8,
   },
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#1E293B',
-    marginBottom: 2,
+
+  // Logistics
+  logisticsBtn: {
+    flexDirection: 'row', alignItems: 'center',
+    gap: 7, paddingVertical: 14, justifyContent: 'center',
   },
-  cardDesc: {
-    fontSize: 13,
-    color: Colors.textSecondary,
-    lineHeight: 18,
+  logisticsText: {
+    fontSize: 13, color: Colors.textSecondary,
+    fontWeight: '600', textDecorationLine: 'underline',
   },
-  moreRolesBtn: {
-    marginTop: 12,
-    padding: 12,
-    alignItems: 'center',
+
+  // Sign In
+  signinRow: {
+    flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'center', paddingTop: 4,
   },
-  moreRolesText: {
-    fontSize: 13,
-    color: Colors.textSecondary,
-    fontWeight: '600',
-    textDecorationLine: 'underline',
-  },
-  footer: {
-    flexDirection: 'row',
-    marginTop: 'auto',
-    marginBottom: 40,
-    alignItems: 'center',
-  },
-  footerText: {
-    color: Colors.textSecondary,
-    fontSize: 14,
-  },
-  loginLink: {
-    color: Colors.agri.sabz,
-    fontSize: 14,
-    fontWeight: '800',
-  },
+  signinText: { fontSize: 14, color: Colors.textSecondary, fontWeight: '500' },
+  signinLink: { fontSize: 14, fontWeight: '800', color: Colors.agri.sabz },
 });

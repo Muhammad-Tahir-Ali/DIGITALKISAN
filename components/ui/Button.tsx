@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import {
   TouchableOpacity,
   TouchableOpacityProps,
@@ -8,6 +8,7 @@ import {
   StyleSheet,
   ViewStyle,
   TextStyle,
+  Animated,
 } from 'react-native';
 import { Colors, Semantic } from '@/constants/colors';
 import { FontSize, FontWeight, ComponentSize, Shadow } from '@/constants/theme';
@@ -16,7 +17,7 @@ import { FontSize, FontWeight, ComponentSize, Shadow } from '@/constants/theme';
 // Types
 // ---------------------------------------------------------------------------
 export type ButtonVariant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger';
-export type ButtonSize = 'sm' | 'md' | 'lg';
+export type ButtonSize = 'sm' | 'md' | 'lg' | 'xl';
 
 interface ButtonProps extends Omit<TouchableOpacityProps, 'style'> {
   /** Visual variant */
@@ -94,6 +95,16 @@ const VARIANT_MAP: Record<ButtonVariant, VariantTokens> = {
   },
 };
 
+const SIZE_EXTRA: Record<string, any> = {
+  xl: {
+    height: 58,
+    paddingHorizontal: 28,
+    fontSize: 17,
+    iconSize: 22,
+    borderRadius: 18,
+  },
+};
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -111,31 +122,42 @@ export function Button({
   ...rest
 }: ButtonProps) {
   const tokens = VARIANT_MAP[variant];
-  const sizeTokens = ComponentSize[size];
+  const sizeTokens = (size === 'xl' ? SIZE_EXTRA.xl : ComponentSize[size as 'sm' | 'md' | 'lg']);
   const isDisabled = disabled || loading;
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+
+  const handlePressIn = () => {
+    Animated.spring(scaleAnim, { toValue: 0.97, useNativeDriver: true, speed: 30 }).start();
+  };
+  const handlePressOut = () => {
+    Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, speed: 20 }).start();
+  };
 
   return (
-    <TouchableOpacity
-      activeOpacity={0.75}
-      disabled={isDisabled}
-      style={[
-        styles.base,
-        {
-          height: sizeTokens.height,
-          paddingHorizontal: sizeTokens.paddingHorizontal,
-          borderRadius: sizeTokens.borderRadius,
-          backgroundColor: isDisabled ? tokens.bgDisabled : tokens.bg,
-          borderWidth: tokens.border ? 1.5 : 0,
-          borderColor: isDisabled
-            ? (tokens.border ? tokens.textDisabled : 'transparent')
-            : (tokens.border ?? 'transparent'),
-          ...(tokens.shadow && !isDisabled ? tokens.shadow : {}),
-        },
-        fullWidth && styles.fullWidth,
-        style,
-      ]}
-      {...rest}
-    >
+    <Animated.View style={{ transform: [{ scale: scaleAnim }], alignSelf: fullWidth ? 'stretch' : 'flex-start' }}>
+      <TouchableOpacity
+        activeOpacity={0.88}
+        disabled={isDisabled}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        style={[
+          styles.base,
+          {
+            height: sizeTokens.height,
+            paddingHorizontal: sizeTokens.paddingHorizontal,
+            borderRadius: sizeTokens.borderRadius,
+            backgroundColor: isDisabled ? tokens.bgDisabled : tokens.bg,
+            borderWidth: tokens.border ? 1.5 : 0,
+            borderColor: isDisabled
+              ? (tokens.border ? tokens.textDisabled : 'transparent')
+              : (tokens.border ?? 'transparent'),
+            ...(tokens.shadow && !isDisabled ? tokens.shadow : {}),
+          },
+          fullWidth && styles.fullWidth,
+          style,
+        ]}
+        {...rest}
+      >
       {/* Left icon */}
       {leftIcon && !loading && (
         <View style={styles.iconLeft}>{leftIcon}</View>
@@ -169,7 +191,8 @@ export function Button({
       {rightIcon && !loading && (
         <View style={styles.iconRight}>{rightIcon}</View>
       )}
-    </TouchableOpacity>
+      </TouchableOpacity>
+    </Animated.View>
   );
 }
 
@@ -187,7 +210,7 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
   },
   label: {
-    fontWeight: FontWeight.semibold,
+    fontWeight: '700',
     letterSpacing: 0.2,
     flexShrink: 1,
   },

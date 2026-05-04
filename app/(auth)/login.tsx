@@ -1,254 +1,288 @@
 import React, { useState, useMemo } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity, KeyboardAvoidingView,
-  Platform, ScrollView, StyleSheet, Dimensions, Alert
+  View, Text, TouchableOpacity, KeyboardAvoidingView,
+  Platform, ScrollView, StyleSheet, Alert,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Feather } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Colors } from '@/constants/colors';
 import { useAuth } from '@/hooks/useAuth';
-import { Button } from '@/components/ui';
+import { Button, Input, PasswordInput } from '@/components/ui';
 
-const { width } = Dimensions.get('window');
-
-// ---------------------------------------------------------------------------
-// Validation Schemas
-// ---------------------------------------------------------------------------
-const authSchema = z.object({
-  name: z.string().optional().refine((val) => {
-    // Required only for register
-    return true; 
-  }, 'Name is required'),
-  phone: z.string().regex(/^(?:\+92|0)[0-9]{10}$/, 'Invalid Pakistan phone number format'),
+const loginSchema = z.object({
+  email: z.string().email('Please enter a valid email address'),
   password: z.string().min(8, 'Password must be at least 8 characters'),
 });
 
-type AuthForm = z.infer<typeof authSchema>;
+type LoginForm = z.infer<typeof loginSchema>;
 
-export default function AuthScreen() {
+const ROLE_CONFIG: Record<string, { label: string; emoji: string; gradient: [string, string]; color: string }> = {
+  farmer: {
+    label: 'Farmer',
+    emoji: '🌾',
+    gradient: ['#052e16', '#166534'],
+    color: Colors.agri.sabz,
+  },
+  buyer: {
+    label: 'Buyer',
+    emoji: '🧺',
+    gradient: ['#78350f', '#b45309'],
+    color: Colors.agri.peela,
+  },
+  logistics: {
+    label: 'Logistics',
+    emoji: '🚛',
+    gradient: ['#1e3a5f', '#2d4a7a'],
+    color: Colors.agri.shab,
+  },
+  default: {
+    label: 'Member',
+    emoji: '👤',
+    gradient: ['#111827', '#374151'],
+    color: Colors.primary,
+  },
+};
+
+export default function LoginScreen() {
   const router = useRouter();
   const { role } = useLocalSearchParams<{ role: string }>();
-  const { login, register } = useAuth();
-  
-  const [isLogin, setIsLogin] = useState(true);
-  const [showPassword, setShowPassword] = useState(false);
+  const { login } = useAuth();
 
-  // Determine theme color based on role
-  const accentColor = useMemo(() => {
-    if (role === 'farmer') return Colors.agri.sabz;
-    if (role === 'buyer') return Colors.agri.peela;
-    return Colors.primary;
-  }, [role]);
+  const roleKey = role ?? 'default';
+  const config = ROLE_CONFIG[roleKey] ?? ROLE_CONFIG.default;
 
-  const { control, handleSubmit, formState: { errors, isSubmitting } } = useForm<AuthForm>({
-    resolver: zodResolver(authSchema),
-    defaultValues: { name: '', phone: '', password: '' },
+  const { control, handleSubmit, formState: { errors, isSubmitting } } = useForm<LoginForm>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: { email: '', password: '' },
   });
 
-  const onSubmit = async (data: AuthForm) => {
+  const onSubmit = async (data: LoginForm) => {
     try {
-      if (isLogin) {
-        await login({ email: `${data.phone}@digitalkisan.app`, password: data.password });
-      } else {
-        await register({
-          name: data.name || 'New User',
-          phone: data.phone,
-          password: data.password,
-          role: (role as any) || 'buyer',
-          email: `${data.phone}@digitalkisan.app` // Mapping phone to semi-unique email for system compatibility
-        });
-      }
-
-      // Root layout/index handles navigation based on auth state
+      await login({ email: data.email, password: data.password });
       router.replace('/');
     } catch (err: any) {
-      Alert.alert('Authentication Error', err.message || 'Something went wrong. Please try again.');
+      const message = err?.response?.data?.message || err?.message || 'Something went wrong.';
+      const isUnverified = message.toLowerCase().includes('verify');
+
+      if (Platform.OS === 'web') {
+        window.alert(message + (isUnverified ? '\n\nPlease check your email for the verification code.' : ''));
+        if (isUnverified) {
+          router.push({ pathname: '/(auth)/verify-email', params: { email: data.email, role: roleKey } });
+        }
+        return;
+      }
+
+      if (isUnverified) {
+        Alert.alert(
+          'Email Not Verified',
+          message,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Go to Verification',
+              onPress: () => router.push({ pathname: '/(auth)/verify-email', params: { email: data.email, role: roleKey } }),
+            },
+          ]
+        );
+      } else {
+        Alert.alert('Login Failed', message);
+      }
     }
   };
 
   return (
     <KeyboardAvoidingView
-      style={styles.container}
+      style={styles.root}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-        
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity 
-            style={styles.backBtn}
-            onPress={() => router.back()}
-          >
-            <Feather name="arrow-left" size={22} color={Colors.textPrimary} />
-          </TouchableOpacity>
-          <Text style={styles.title}>{isLogin ? 'Welcome Back!' : 'Create Account'}</Text>
-          <Text style={styles.subtitle}>
-            {isLogin 
-              ? `Sign in as a DigitalKisan ${role || 'Member'}` 
-              : `Join our community as a ${role || 'Member'}`}
-          </Text>
+      {/* ── HERO ── */}
+      <LinearGradient
+        colors={config.gradient}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.hero}
+      >
+        <View style={styles.heroBlob1} />
+        <View style={styles.heroBlob2} />
+
+        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+          <Feather name="arrow-left" size={20} color="rgba(255,255,255,0.85)" />
+        </TouchableOpacity>
+
+        <View style={styles.heroBadge}>
+          <Text style={styles.heroBadgeEmoji}>{config.emoji}</Text>
         </View>
+        <Text style={styles.heroTitle}>Welcome Back</Text>
+        <Text style={styles.heroSub}>Sign in as a DigitalKisan {config.label}</Text>
+      </LinearGradient>
 
-        {/* Toggle Mode */}
-        <View style={styles.toggleContainer}>
-          <TouchableOpacity 
-            style={[styles.toggleBtn, isLogin && { backgroundColor: accentColor }]} 
-            onPress={() => setIsLogin(true)}
-          >
-            <Text style={[styles.toggleText, isLogin && styles.toggleTextActive]}>Login</Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={[styles.toggleBtn, !isLogin && { backgroundColor: accentColor }]} 
-            onPress={() => setIsLogin(false)}
-          >
-            <Text style={[styles.toggleText, !isLogin && styles.toggleTextActive]}>Register</Text>
-          </TouchableOpacity>
-        </View>
+      {/* ── FORM SHEET ── */}
+      <ScrollView
+        style={styles.sheet}
+        contentContainerStyle={styles.sheetContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        <Text style={styles.formHeading}>Sign In</Text>
+        <Text style={styles.formSub}>Enter your credentials to continue</Text>
 
-        {/* Form Body */}
-        <View style={styles.form}>
-          
-          {!isLogin && (
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Full Name</Text>
-              <Controller
-                control={control}
-                name="name"
-                render={({ field: { onChange, onBlur, value } }) => (
-                  <View style={[styles.inputWrap, errors.name && styles.inputError]}>
-                    <Feather name="user" size={18} color="#94A3B8" />
-                    <TextInput
-                      style={styles.input}
-                      placeholder="Enter your full name"
-                      placeholderTextColor="#94A3B8"
-                      onBlur={onBlur}
-                      onChangeText={onChange}
-                      value={value}
-                    />
-                  </View>
-                )}
-              />
-              {errors.name && <Text style={styles.errorText}>{errors.name.message}</Text>}
-            </View>
-          )}
-
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Phone Number</Text>
-            <Controller
-              control={control}
-              name="phone"
-              render={({ field: { onChange, onBlur, value } }) => (
-                <View style={[styles.inputWrap, errors.phone && styles.inputError]}>
-                  <Text style={styles.flag}>🇵🇰</Text>
-                  <Text style={styles.prefix}>+92</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="300 1234567"
-                    placeholderTextColor="#94A3B8"
-                    keyboardType="phone-pad"
-                    onBlur={onBlur}
-                    onChangeText={onChange}
-                    value={value}
-                  />
-                </View>
-              )}
+        <Controller
+          control={control}
+          name="email"
+          render={({ field: { onChange, onBlur, value } }) => (
+            <Input
+              label="Email Address"
+              icon="mail"
+              placeholder="you@example.com"
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoCorrect={false}
+              error={errors.email?.message}
+              onBlur={onBlur}
+              onChangeText={onChange}
+              value={value}
             />
-            {errors.phone && <Text style={styles.errorText}>{errors.phone.message}</Text>}
-          </View>
-
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Password</Text>
-            <Controller
-              control={control}
-              name="password"
-              render={({ field: { onChange, onBlur, value } }) => (
-                <View style={[styles.inputWrap, errors.password && styles.inputError]}>
-                  <Feather name="lock" size={18} color="#94A3B8" />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Enter your password"
-                    placeholderTextColor="#94A3B8"
-                    secureTextEntry={!showPassword}
-                    onBlur={onBlur}
-                    onChangeText={onChange}
-                    value={value}
-                  />
-                  <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
-                    <Feather name={showPassword ? 'eye-off' : 'eye'} size={18} color="#94A3B8" />
-                  </TouchableOpacity>
-                </View>
-              )}
-            />
-            {errors.password && <Text style={styles.errorText}>{errors.password.message}</Text>}
-          </View>
-
-          {isLogin && (
-            <TouchableOpacity style={styles.forgotBtn} onPress={() => Alert.alert('Coming Soon', 'Password reset will be available soon!')}>
-              <Text style={[styles.forgotText, { color: accentColor }]}>Forgot Password?</Text>
-            </TouchableOpacity>
           )}
+        />
 
-          <Button
-            label={isLogin ? 'Sign In Securely' : 'Create My Account'}
-            onPress={handleSubmit(onSubmit)}
-            loading={isSubmitting}
-            fullWidth
-            style={{ backgroundColor: accentColor, borderRadius: 16, height: 60, marginTop: 12 }}
-          />
+        <Controller
+          control={control}
+          name="password"
+          render={({ field: { onChange, onBlur, value } }) => (
+            <PasswordInput
+              label="Password"
+              icon="lock"
+              placeholder="Min. 8 characters"
+              error={errors.password?.message}
+              onBlur={onBlur}
+              onChangeText={onChange}
+              value={value}
+            />
+          )}
+        />
 
-          <Text style={styles.terms}>
-            By continuing, you agree to our <Text style={{ fontWeight: '700' }}>Terms of Service</Text> and <Text style={{ fontWeight: '700' }}>Privacy Policy</Text>.
-          </Text>
+        <TouchableOpacity
+          style={styles.forgotBtn}
+          onPress={() => Alert.alert('Coming Soon', 'Password reset will be available soon!')}
+        >
+          <Text style={[styles.forgotText, { color: config.color }]}>Forgot Password?</Text>
+        </TouchableOpacity>
+
+        <Button
+          label="Sign In Securely"
+          onPress={handleSubmit(onSubmit)}
+          loading={isSubmitting}
+          fullWidth
+          size="xl"
+          style={{ backgroundColor: config.color, borderRadius: 16, marginBottom: 20 }}
+        />
+
+        <View style={styles.dividerRow}>
+          <View style={styles.divider} />
+          <Text style={styles.dividerText}>OR</Text>
+          <View style={styles.divider} />
         </View>
 
+        <TouchableOpacity
+          style={[styles.registerBtn, { borderColor: config.color }]}
+          onPress={() => router.push({ pathname: '/(auth)/role-select' })}
+        >
+          <Text style={[styles.registerBtnText, { color: config.color }]}>Create a New Account</Text>
+        </TouchableOpacity>
+
+        <Text style={styles.terms}>
+          By continuing, you agree to our{' '}
+          <Text style={styles.termsLink}>Terms of Service</Text>
+          {' '}and{' '}
+          <Text style={styles.termsLink}>Privacy Policy</Text>.
+        </Text>
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F8FAFB' },
-  scrollContent: { paddingHorizontal: 24, paddingBottom: 60, paddingTop: 60 },
-  header: { marginBottom: 32 },
+  root: { flex: 1, backgroundColor: Colors.background },
+
+  // Hero
+  hero: {
+    paddingTop: Platform.OS === 'ios' ? 60 : 48,
+    paddingBottom: 40,
+    paddingHorizontal: 28,
+    overflow: 'hidden',
+  },
+  heroBlob1: {
+    position: 'absolute', top: -50, right: -40,
+    width: 200, height: 200, borderRadius: 100,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+  },
+  heroBlob2: {
+    position: 'absolute', bottom: -20, left: -20,
+    width: 120, height: 120, borderRadius: 60,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+  },
   backBtn: {
-    width: 44, height: 44, borderRadius: 12,
-    backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center',
-    marginBottom: 24, shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05, shadowRadius: 5, elevation: 2,
+    width: 40, height: 40, borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
+    alignItems: 'center', justifyContent: 'center',
+    marginBottom: 24,
   },
-  title: { fontSize: 28, fontWeight: '900', color: Colors.textPrimary, letterSpacing: -0.5 },
-  subtitle: { fontSize: 15, color: Colors.textSecondary, fontWeight: '500', marginTop: 4 },
-  
-  toggleContainer: {
-    flexDirection: 'row', backgroundColor: '#E2E8F0',
-    borderRadius: 18, padding: 4, marginBottom: 32,
+  heroBadge: {
+    width: 64, height: 64, borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
+    alignItems: 'center', justifyContent: 'center',
+    marginBottom: 16,
   },
-  toggleBtn: { flex: 1, paddingVertical: 12, borderRadius: 14, alignItems: 'center' },
-  toggleText: { fontSize: 15, fontWeight: '700', color: '#64748B' },
-  toggleTextActive: { color: '#fff' },
+  heroBadgeEmoji: { fontSize: 30 },
+  heroTitle: {
+    fontSize: 28, fontWeight: '900', color: '#fff',
+    letterSpacing: -0.8, marginBottom: 4,
+  },
+  heroSub: { fontSize: 14, fontWeight: '500', color: 'rgba(255,255,255,0.65)' },
 
-  form: { flex: 1 },
-  inputGroup: { marginBottom: 20 },
-  label: { fontSize: 13, fontWeight: '800', color: Colors.textPrimary, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
-  inputWrap: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff',
-    borderRadius: 16, height: 60, borderWidth: 1, borderColor: '#E2E8F0',
-    paddingHorizontal: 16,
+  // Sheet
+  sheet: {
+    flex: 1,
+    backgroundColor: Colors.background,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    marginTop: -20,
   },
-  inputError: { borderColor: Colors.error },
-  input: { flex: 1, fontSize: 16, fontWeight: '600', color: Colors.textPrimary, marginLeft: 12 },
-  flag: { fontSize: 20, marginRight: 8 },
-  prefix: { fontSize: 16, fontWeight: '700', color: Colors.textPrimary, marginRight: 8 },
-  errorText: { color: Colors.error, fontSize: 12, marginTop: 4, fontWeight: '500' },
+  sheetContent: {
+    paddingHorizontal: 24,
+    paddingTop: 28,
+    paddingBottom: 60,
+  },
+  formHeading: {
+    fontSize: 24, fontWeight: '900', color: Colors.textPrimary,
+    letterSpacing: -0.5, marginBottom: 4,
+  },
+  formSub: {
+    fontSize: 14, color: Colors.textSecondary,
+    fontWeight: '500', marginBottom: 28,
+  },
+  forgotBtn: { alignSelf: 'flex-end', marginBottom: 24, marginTop: -8 },
+  forgotText: { fontSize: 13, fontWeight: '700' },
 
-  forgotBtn: { alignSelf: 'flex-end', marginBottom: 24 },
-  forgotText: { fontSize: 14, fontWeight: '700' },
-  
+  dividerRow: { flexDirection: 'row', alignItems: 'center', marginVertical: 20 },
+  divider: { flex: 1, height: 1, backgroundColor: Colors.border },
+  dividerText: { color: Colors.textTertiary, fontSize: 12, fontWeight: '700', marginHorizontal: 12 },
+
+  registerBtn: {
+    height: 56, borderRadius: 16, borderWidth: 2,
+    alignItems: 'center', justifyContent: 'center', marginBottom: 24,
+  },
+  registerBtnText: { fontSize: 15, fontWeight: '800' },
+
   terms: {
-    textAlign: 'center', color: Colors.textSecondary,
-    fontSize: 12, lineHeight: 18, marginTop: 24, paddingHorizontal: 20,
+    textAlign: 'center', color: Colors.textTertiary,
+    fontSize: 12, lineHeight: 18, paddingHorizontal: 16,
   },
+  termsLink: { fontWeight: '700', color: Colors.textSecondary },
 });

@@ -18,6 +18,11 @@ export interface RegisterPayload {
   role: UserRole;
 }
 
+export interface VerifyEmailPayload {
+  email: string;
+  code: string;
+}
+
 // Backend wraps response in: { status: 'success', token, data: { user } }
 interface BackendAuthResponse {
   status: string;
@@ -63,9 +68,18 @@ const authService = {
 
   /**
    * Create a new account
+   * This now returns a pending status, not the auth token
    */
-  register: async (payload: RegisterPayload): Promise<AuthResponse> => {
-    const { data } = await api.post<BackendAuthResponse>('/auth/register', payload);
+  register: async (payload: RegisterPayload): Promise<{ status: string; message: string; data: { email: string } }> => {
+    const { data } = await api.post('/auth/register', payload);
+    return data;
+  },
+
+  /**
+   * Verify email with OTP
+   */
+  verifyEmail: async (payload: VerifyEmailPayload): Promise<AuthResponse> => {
+    const { data } = await api.post<BackendAuthResponse>('/auth/verify-email', payload);
     return normalizeResponse(data);
   },
 
@@ -84,14 +98,6 @@ const authService = {
    */
   logout: async (): Promise<void> => {
     // Backend logout logic if needed, storage is cleared in useAuth.ts
-  },
-
-  /**
-   * Restore session from SecureStore on app launch
-   */
-  restoreSession: async (): Promise<{ token: string; refreshToken: string } | null> => {
-    // This function is no longer used since useAuth.ts directly reads from storage
-    return null;
   },
 };
 

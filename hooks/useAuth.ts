@@ -96,7 +96,27 @@ export function useAuth() {
       store.setLoading(true);
       store.setError(null);
 
-      const { user, token, refreshToken } = await authService.register(payload);
+      const response = await authService.register(payload);
+      return response.data; // returns { email: string }
+    } catch (err: any) {
+      const message =
+        err?.response?.data?.message ?? 'Registration failed. Please try again.';
+      store.setError(message);
+      throw err;
+    } finally {
+      store.setLoading(false);
+    }
+  }, []);
+
+  /**
+   * Verify email OTP after registration
+   */
+  const verifyRegistration = useCallback(async (email: string, code: string) => {
+    try {
+      store.setLoading(true);
+      store.setError(null);
+
+      const { user, token, refreshToken } = await authService.verifyEmail({ email, code });
 
       if (Platform.OS === 'web') {
         localStorage.setItem(TOKEN_KEY, token);
@@ -110,7 +130,7 @@ export function useAuth() {
       return user;
     } catch (err: any) {
       const message =
-        err?.response?.data?.message ?? 'Registration failed. Please try again.';
+        err?.response?.data?.message ?? 'Verification failed. Please check your code.';
       store.setError(message);
       throw err;
     } finally {
@@ -154,6 +174,7 @@ export function useAuth() {
     error: store.error,
     login,
     register,
+    verifyRegistration,
     logout,
     rehydrate,
     selectRole,

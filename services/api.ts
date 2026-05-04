@@ -1,11 +1,7 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 import * as SecureStore from 'expo-secure-store';
-import { useAuthStore } from '@/store/authStore';
-
-// ---------------------------------------------------------------------------
-// Base URL — update to your actual backend URL
-// ---------------------------------------------------------------------------
 import { Platform } from 'react-native';
+import { useAuthStore } from '@/store/authStore';
 
 export const BASE_URL = __DEV__
   ? (Platform.OS === 'web' ? 'http://localhost:3000/api/v1' : 'http://10.0.2.2:3000/api/v1')
@@ -77,17 +73,24 @@ api.interceptors.response.use(
       isRefreshing = true;
 
       try {
-        const refreshToken = await SecureStore.getItemAsync('refreshToken');
+        const refreshToken = Platform.OS === 'web'
+          ? localStorage.getItem('refreshToken')
+          : await SecureStore.getItemAsync('refreshToken');
+
         if (!refreshToken) throw new Error('No refresh token');
 
-        const res = await axios.post(`${BASE_URL}/auth/refresh`, {
-          refreshToken,
-        });
+        const res = await axios.post(`${BASE_URL}/auth/refresh`, { refreshToken });
         const { token, refreshToken: newRefreshToken } = res.data;
 
         useAuthStore.getState().setTokens(token, newRefreshToken);
-        await SecureStore.setItemAsync('token', token);
-        await SecureStore.setItemAsync('refreshToken', newRefreshToken);
+
+        if (Platform.OS === 'web') {
+          localStorage.setItem('token', token);
+          localStorage.setItem('refreshToken', newRefreshToken);
+        } else {
+          await SecureStore.setItemAsync('token', token);
+          await SecureStore.setItemAsync('refreshToken', newRefreshToken);
+        }
 
         processQueue(null, token);
 
@@ -98,8 +101,13 @@ api.interceptors.response.use(
       } catch (refreshError) {
         processQueue(refreshError, null);
         useAuthStore.getState().logout();
-        await SecureStore.deleteItemAsync('token');
-        await SecureStore.deleteItemAsync('refreshToken');
+        if (Platform.OS === 'web') {
+          localStorage.removeItem('token');
+          localStorage.removeItem('refreshToken');
+        } else {
+          await SecureStore.deleteItemAsync('token');
+          await SecureStore.deleteItemAsync('refreshToken');
+        }
         return Promise.reject(refreshError);
       } finally {
         isRefreshing = false;

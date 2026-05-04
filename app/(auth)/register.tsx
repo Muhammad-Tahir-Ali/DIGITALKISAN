@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,8 @@ import {
   ToastAndroid,
   Alert,
   Modal,
+  Animated,
+  StyleSheet,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useForm, Controller } from 'react-hook-form';
@@ -17,7 +19,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Feather } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { Button } from '@/components/ui';
+import { Button, Input, PasswordInput } from '@/components/ui';
 import { Colors } from '@/constants/colors';
 import { useAuth } from '@/hooks/useAuth';
 import { UserRole } from '@/store/authStore';
@@ -29,7 +31,7 @@ const registerSchema = z
   .object({
     fullName: z.string().min(2, 'Name is required'),
     phone: z.string().regex(/^(?:\+92|0)[0-9]{10}$/, 'Invalid Pakistani phone format'),
-    email: z.string().email('Invalid email').or(z.literal('')),
+    email: z.string().email('Invalid email address is required'),
     city: z.string().min(1, 'City is required'),
     password: z.string().min(8, 'Minimum 8 characters'),
     confirmPassword: z.string(),
@@ -70,6 +72,16 @@ export default function RegisterScreen() {
 
   const isFarmer = role === 'farmer';
   const totalSteps = isFarmer ? 3 : 2;
+
+  // Animated progress bar
+  const progressAnim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(progressAnim, {
+      toValue: step / totalSteps,
+      duration: 350,
+      useNativeDriver: false,
+    }).start();
+  }, [step, totalSteps]);
 
   const {
     control,
@@ -137,35 +149,31 @@ export default function RegisterScreen() {
     }
 
     try {
-      await registerUser({
+      const responseData = await registerUser({
         name: data.fullName,
-        email: data.email || `${data.phone}@placeholder.com`,
+        email: data.email,
         phone: data.phone,
         password: data.password,
         role: role as UserRole,
       });
 
-      // API calls to upload other details could follow here
-      
-      Alert.alert('Success', 'Your account has been created successfully!', [
-        {
-          text: 'Continue',
-          onPress: () => {
-            if (role === 'farmer') router.replace('/(farmer)/dashboard');
-            else if (role === 'buyer') router.replace('/(buyer)/home');
-            else if (role === 'logistics') router.replace('/(logistics)/dashboard');
-            else router.replace('/(auth)/login');
-          },
-        },
-      ]);
+      // Navigate to verify email screen
+      router.push({
+        pathname: '/(auth)/verify-email',
+        params: { email: responseData?.email || data.email, role }
+      });
     } catch (err: any) {
-      const msg = err.message || 'Registration failed';
-      if (Platform.OS === 'android') ToastAndroid.show(msg, ToastAndroid.SHORT);
-      else Alert.alert('Error', msg);
+      const msg = err?.response?.data?.message || err?.message || 'Registration failed. Please try again.';
+      if (Platform.OS === 'web') {
+        window.alert(msg);
+      } else if (Platform.OS === 'android') {
+        ToastAndroid.show(msg, ToastAndroid.SHORT);
+      } else {
+        Alert.alert('Registration Failed', msg);
+      }
     }
   };
 
-  const onValidSubmit = (data: any) => onSubmit(data as RegisterForm);
 
   const pickImage = async (field: keyof RegisterForm) => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -210,32 +218,39 @@ export default function RegisterScreen() {
 
   return (
     <KeyboardAvoidingView
-      className="flex-1 bg-white"
+      style={{ flex: 1, backgroundColor: '#F8FAFB' }}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      {/* Header & Progress */}
-      <View className="px-6 pt-16 pb-4">
-        <View className="flex-row items-center mb-6">
-          <TouchableOpacity 
-            className="w-10 h-10 items-center justify-center rounded-full bg-gray-50 mr-4"
-            onPress={handleBack}
-          >
-            <Feather name="arrow-left" size={24} color={Colors.textPrimary} />
+      {/* ── HEADER & PROGRESS ── */}
+      <View style={regStyles.header}>
+        <View style={regStyles.headerTop}>
+          <TouchableOpacity style={regStyles.backBtn} onPress={handleBack}>
+            <Feather name="arrow-left" size={20} color={Colors.textPrimary} />
           </TouchableOpacity>
-          <Text className="text-xl font-bold text-textPrimary capitalize">Register as {role}</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={regStyles.headerTitle}>Register as <Text style={{ color: Colors.primary, textTransform: 'capitalize' }}>{role}</Text></Text>
+          </View>
+          <Text style={regStyles.stepCount}>{step}/{totalSteps}</Text>
         </View>
-
-        {/* Progress Bar */}
-        <View className="flex-row items-center mb-2">
-          <Text className="text-sm font-medium text-textSecondary flex-1">Step {step} of {totalSteps}</Text>
-          <Text className="text-sm font-semibold text-primary">{Math.round((step/totalSteps)*100)}%</Text>
+        {/* Animated Progress Bar */}
+        <View style={regStyles.progressTrack}>
+          <Animated.View
+            style={[
+              regStyles.progressFill,
+              {
+                width: progressAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: ['0%', '100%'],
+                }),
+              },
+            ]}
+          />
         </View>
-        <View className="h-2 bg-gray-100 rounded-full w-full overflow-hidden flex-row gap-x-1">
+        <View style={regStyles.stepLabels}>
           {Array.from({ length: totalSteps }).map((_, i) => (
-            <View 
-              key={i} 
-              className={`flex-1 h-full rounded-full transition-all duration-300 ${i < step ? 'bg-primary' : 'bg-transparent'}`} 
-            />
+            <Text key={i} style={[regStyles.stepLabel, i + 1 <= step && { color: Colors.primary, fontWeight: '700' }]}>
+              {['Personal', 'Details', 'Verify'][i]}
+            </Text>
           ))}
         </View>
       </View>
@@ -244,63 +259,88 @@ export default function RegisterScreen() {
         {/* STEP 1: Personal Info */}
         {step === 1 && (
           <View>
-            <Text className="text-2xl font-bold text-textPrimary mb-6">Personal Information</Text>
+            <Text style={regStyles.stepHeading}>Personal Information</Text>
 
             <Controller control={control} name="fullName" render={({ field: { onChange, onBlur, value } }) => (
-              <View className="mb-4">
-                <Text className="text-textPrimary font-medium mb-1">Full Name</Text>
-                <TextInput className={`border rounded-xl h-12 px-4 bg-surface ${errors.fullName ? 'border-red-500' : 'border-gray-200'}`} placeholder="Enter your full name" onBlur={onBlur} onChangeText={onChange} value={value} />
-                {errors.fullName && <Text className="text-red-500 text-xs mt-1">{errors.fullName.message}</Text>}
-              </View>
+              <Input
+                label="Full Name"
+                icon="user"
+                placeholder="Your full name"
+                error={errors.fullName?.message}
+                onBlur={onBlur}
+                onChangeText={onChange}
+                value={value}
+              />
             )} />
 
             <Controller control={control} name="phone" render={({ field: { onChange, onBlur, value } }) => (
-              <View className="mb-4">
-                <Text className="text-textPrimary font-medium mb-1">Phone Number</Text>
-                <View className={`flex-row items-center border rounded-xl h-12 px-4 bg-surface ${errors.phone ? 'border-red-500' : 'border-gray-200'}`}>
-                  <Text className="text-lg mr-2">🇵🇰</Text>
-                  <TextInput className="flex-1 text-base text-textPrimary h-full" placeholder="+92 300 1234567" keyboardType="phone-pad" onBlur={onBlur} onChangeText={onChange} value={value} />
-                </View>
-                {errors.phone && <Text className="text-red-500 text-xs mt-1">{errors.phone.message}</Text>}
-              </View>
+              <Input
+                label="Phone Number"
+                icon="phone"
+                placeholder="+92 300 1234567"
+                keyboardType="phone-pad"
+                error={errors.phone?.message}
+                helperText="Format: +92XXXXXXXXXX or 0XXXXXXXXXX"
+                onBlur={onBlur}
+                onChangeText={onChange}
+                value={value}
+              />
             )} />
 
             <Controller control={control} name="email" render={({ field: { onChange, onBlur, value } }) => (
-              <View className="mb-4">
-                <Text className="text-textPrimary font-medium mb-1">Email <Text className="text-gray-400 font-normal">(Optional)</Text></Text>
-                <TextInput className={`border rounded-xl h-12 px-4 bg-surface ${errors.email ? 'border-red-500' : 'border-gray-200'}`} placeholder="Enter your email" keyboardType="email-address" onBlur={onBlur} onChangeText={onChange} value={value} autoCapitalize="none" />
-                {errors.email && <Text className="text-red-500 text-xs mt-1">{errors.email.message}</Text>}
-              </View>
+              <Input
+                label="Email Address"
+                icon="mail"
+                placeholder="you@example.com"
+                keyboardType="email-address"
+                autoCapitalize="none"
+                error={errors.email?.message}
+                onBlur={onBlur}
+                onChangeText={onChange}
+                value={value}
+              />
             )} />
 
-            <View className="mb-4">
-               <Text className="text-textPrimary font-medium mb-1">City / Location</Text>
-               <TouchableOpacity 
-                 className={`border rounded-xl h-12 px-4 bg-surface justify-center ${errors.city ? 'border-red-500' : 'border-gray-200'}`}
-                 onPress={() => setDropdownModal({ field: 'city', options: CITIES })}
-               >
-                 <Text className={formData.city ? 'text-textPrimary' : 'text-gray-400'}>{formData.city || 'Select your city'}</Text>
-               </TouchableOpacity>
-               {errors.city && <Text className="text-red-500 text-xs mt-1">{errors.city.message}</Text>}
+            <View style={{ marginBottom: 20 }}>
+              <Text style={regStyles.fieldLabel}>City / Location</Text>
+              <TouchableOpacity
+                style={[
+                  regStyles.dropdownBtn,
+                  { borderColor: errors.city ? Colors.error : Colors.border },
+                ]}
+                onPress={() => setDropdownModal({ field: 'city', options: CITIES })}
+              >
+                <Feather name="map-pin" size={18} color={Colors.textTertiary} style={{ marginRight: 12 }} />
+                <Text style={[regStyles.dropdownText, !formData.city && { color: Colors.textTertiary }]}>
+                  {formData.city || 'Select your city'}
+                </Text>
+                <Feather name="chevron-down" size={16} color={Colors.textTertiary} />
+              </TouchableOpacity>
+              {errors.city && <Text style={regStyles.errorText}>{errors.city.message}</Text>}
             </View>
 
             <Controller control={control} name="password" render={({ field: { onChange, onBlur, value } }) => (
-              <View className="mb-4">
-                <Text className="text-textPrimary font-medium mb-1">Password</Text>
-                <View className={`flex-row items-center border rounded-xl h-12 px-4 bg-surface ${errors.password ? 'border-red-500' : 'border-gray-200'}`}>
-                  <TextInput className="flex-1 text-base text-textPrimary h-full" placeholder="Min 8 characters" secureTextEntry={!showPassword} onBlur={onBlur} onChangeText={onChange} value={value} />
-                  <TouchableOpacity onPress={() => setShowPassword(!showPassword)}><Feather name={showPassword ? 'eye-off' : 'eye'} size={20} color={Colors.textSecondary} /></TouchableOpacity>
-                </View>
-                {errors.password && <Text className="text-red-500 text-xs mt-1">{errors.password.message}</Text>}
-              </View>
+              <PasswordInput
+                label="Password"
+                icon="lock"
+                placeholder="Min. 8 characters"
+                error={errors.password?.message}
+                onBlur={onBlur}
+                onChangeText={onChange}
+                value={value}
+              />
             )} />
 
             <Controller control={control} name="confirmPassword" render={({ field: { onChange, onBlur, value } }) => (
-              <View className="mb-6">
-                <Text className="text-textPrimary font-medium mb-1">Confirm Password</Text>
-                <TextInput className={`border rounded-xl h-12 px-4 bg-surface ${errors.confirmPassword ? 'border-red-500' : 'border-gray-200'}`} placeholder="Re-enter password" secureTextEntry={!showPassword} onBlur={onBlur} onChangeText={onChange} value={value} />
-                {errors.confirmPassword && <Text className="text-red-500 text-xs mt-1">{errors.confirmPassword.message}</Text>}
-              </View>
+              <PasswordInput
+                label="Confirm Password"
+                icon="lock"
+                placeholder="Re-enter your password"
+                error={errors.confirmPassword?.message}
+                onBlur={onBlur}
+                onChangeText={onChange}
+                value={value}
+              />
             )} />
           </View>
         )}
@@ -483,7 +523,7 @@ export default function RegisterScreen() {
         <Button
           variant="primary"
           label={step === totalSteps ? "Register" : "Next"}
-          onPress={step === totalSteps ? handleSubmit(onValidSubmit) : handleNext}
+          onPress={step === totalSteps ? handleSubmit(onSubmit) : handleNext}
           loading={isSubmitting}
           style={{ flex: 1 }}
           size="lg"
@@ -494,3 +534,94 @@ export default function RegisterScreen() {
     </KeyboardAvoidingView>
   );
 }
+
+const regStyles = StyleSheet.create({
+  header: {
+    backgroundColor: Colors.surface,
+    paddingTop: Platform.OS === 'ios' ? 60 : 48,
+    paddingHorizontal: 24,
+    paddingBottom: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.cardBorder,
+  },
+  headerTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  backBtn: {
+    width: 40, height: 40,
+    borderRadius: 12,
+    backgroundColor: Colors.surfaceSecondary,
+    alignItems: 'center', justifyContent: 'center',
+    marginRight: 14,
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: Colors.textPrimary,
+  },
+  stepCount: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.textTertiary,
+  },
+  progressTrack: {
+    height: 6,
+    backgroundColor: Colors.cardBorder,
+    borderRadius: 999,
+    overflow: 'hidden',
+    marginBottom: 10,
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: Colors.primary,
+    borderRadius: 999,
+  },
+  stepLabels: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  stepLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: Colors.textTertiary,
+  },
+  stepHeading: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: Colors.textPrimary,
+    marginBottom: 24,
+    marginTop: 8,
+    letterSpacing: -0.3,
+  },
+  fieldLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: 8,
+  },
+  dropdownBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.surface,
+    borderRadius: 14,
+    height: 56,
+    borderWidth: 1.5,
+    paddingHorizontal: 16,
+  },
+  dropdownText: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '500',
+    color: Colors.textPrimary,
+  },
+  errorText: {
+    color: Colors.error,
+    fontSize: 12,
+    fontWeight: '500',
+    marginTop: 6,
+  },
+});

@@ -1,15 +1,15 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView,
   FlatList, StyleSheet, Platform, Dimensions,
-  NativeSyntheticEvent, NativeScrollEvent, Animated, Image
+  NativeSyntheticEvent, NativeScrollEvent, Animated, Image, ActivityIndicator
 } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { Colors } from '@/constants/colors';
-import { MOCK_CROPS } from '@/constants/mockData';
 import { AiBadge } from '@/components/marketplace/AiBadge';
 import { useCartStore } from '@/store/cartStore';
+import productService, { Product } from '@/services/product.service';
 
 const { width: SW } = Dimensions.get('window');
 
@@ -17,22 +17,27 @@ export default function ProductDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router  = useRouter();
 
-  const product = MOCK_CROPS.find((p) => p.id === id) ?? MOCK_CROPS[0];
-  
-  // ── Setup images (prioritize real photos, fallback to emoji slides)
-  const productImages = product.images && product.images.length > 0 
-    ? product.images 
-    : [{ isEmoji: true, bg: '#F0FDF4' }];
+  const [product, setProduct] = useState<Product | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    productService.getById(id)
+      .then(p => {
+        setProduct(p);
+        setQty(Math.min(5, p.availableQuantity || 1));
+      })
+      .catch(err => setError('Failed to load product details'))
+      .finally(() => setLoading(false));
+  }, [id]);
 
   const addItem     = useCartStore((s) => s.addItem);
   const totalItems  = useCartStore((s) => s.totalItems);
 
-  const [qty,         setQty]         = useState(5);
+  const [qty,         setQty]         = useState(1);
   const [slideIndex,  setSlideIndex]  = useState(0);
   const [isWishlisted, setIsWishlisted] = useState(false);
   const [addedAnim]   = useState(new Animated.Value(1));
-
-  const totalPrice = product.price * qty;
 
   // ── Carousel scroll tracking
   const onCarouselScroll = useCallback(
@@ -43,18 +48,18 @@ export default function ProductDetailScreen() {
     [],
   );
 
-  // ── Add to cart with pulse animation
   const handleAddToCart = useCallback(() => {
+    if (!product) return;
     addItem({
-      id:          product.id,
-      productId:   product.id,
-      name:        product.name,
-      price:       product.price,
+      id:          product._id,
+      productId:   product._id,
+      name:        product.title,
+      price:       product.pricePerUnit,
       quantity:    qty,
       unit:        product.unit,
-      farmerId:    product.farmerId,
-      farmerName:  product.farmerName,
-      maxStock:    product.stockKg,
+      farmerId:    product.farmer._id,
+      farmerName:  product.farmer.name,
+      maxStock:    product.availableQuantity,
     });
     Animated.sequence([
       Animated.timing(addedAnim, { toValue: 0.9, duration: 80,  useNativeDriver: true }),
@@ -63,7 +68,7 @@ export default function ProductDetailScreen() {
   }, [product, qty, addItem, addedAnim]);
 
   // ── Star renderer
-  const Stars = ({ rating }: { rating: number }) => (
+  const Stars = ({ rating, count }: { rating: number; count: number }) => (
     <View style={styles.stars}>
       {Array.from({ length: 5 }).map((_, i) => (
         <Feather
@@ -73,9 +78,39 @@ export default function ProductDetailScreen() {
           color={i < Math.round(rating) ? Colors.amber[500] : Colors.border}
         />
       ))}
-      <Text style={styles.ratingText}>{rating} ({product.farmerReviews} reviews)</Text>
+      <Text style={styles.ratingText}>{rating.toFixed(1)} ({count} reviews)</Text>
     </View>
   );
+
+  if (loading) {
+    return (
+      <View style={[styles.root, { alignItems: 'center', justifyContent: 'center' }]}>
+        <ActivityIndicator size="large" color={Colors.primary} />
+      </View>
+    );
+  }
+
+  if (error || !product) {
+    return (
+      <View style={[styles.root, { alignItems: 'center', justifyContent: 'center' }]}>
+        <Text style={{ color: Colors.error, fontSize: 16 }}>{error || 'Product not found'}</Text>
+        <TouchableOpacity onPress={() => router.back()} style={{ marginTop: 20 }}>
+          <Text style={{ color: Colors.primary, fontWeight: '700' }}>Go Back</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  const productImages = product.images && product.images.length > 0 
+    ? product.images 
+    : [{ isEmoji: true, bg: '#F0FDF4' }];
+    
+  const totalPrice = product.pricePerUnit * qty;
+  const emoji = '🌾'; // Fallback
+  const farmerRating = product.farmer.rating || 5.0;
+  const farmerCity = product.farmer.location?.address || 'Pakistan';
+  const aiScore = 95; 
+  const quality = 'Grade A' as any;
 
   return (
     <View style={styles.root}>
@@ -96,7 +131,7 @@ export default function ProductDetailScreen() {
               <View style={[styles.slide, { width: SW }]}>
                 {img.isEmoji ? (
                   <View style={[styles.slideEmojiWrap, { backgroundColor: img.bg }]}>
-                    <Text style={styles.slideEmoji}>{product.emoji}</Text>
+                    <Text style={styles.slideEmoji}>{emoji}</Text>
                   </View>
                 ) : (
                   <Image 
@@ -155,21 +190,21 @@ export default function ProductDetailScreen() {
 
           {/* AI Badge + stock */}
           <View style={styles.rowBetween}>
-            <AiBadge grade={product.quality} score={product.aiScore} />
+            <AiBadge grade={quality} score={aiScore} />
             <View style={styles.stockPill}>
               <Feather name="package" size={11} color={Colors.success} />
-              <Text style={styles.stockText}>In Stock · {product.stockKg} {product.unit}</Text>
+              <Text style={styles.stockText}>In Stock · {product.availableQuantity} {product.unit}</Text>
             </View>
           </View>
 
           {/* Title + price */}
           <View style={styles.titleRow}>
             <View style={{ flex: 1, marginRight: 12 }}>
-              <Text style={styles.productName}>{product.name}</Text>
-              <Text style={styles.productSub}>Harvested · {product.farmerCity}</Text>
+              <Text style={styles.productName}>{product.title}</Text>
+              <Text style={styles.productSub}>Harvested · {farmerCity}</Text>
             </View>
             <View style={styles.priceBlock}>
-              <Text style={styles.bigPrice}>₨{product.price}</Text>
+              <Text style={styles.bigPrice}>₨{product.pricePerUnit}</Text>
               <Text style={styles.perUnit}>per {product.unit}</Text>
             </View>
           </View>
@@ -180,11 +215,11 @@ export default function ProductDetailScreen() {
               <Text style={{ fontSize: 22 }}>👨‍🌾</Text>
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.farmerName}>{product.farmerName}</Text>
-              <Stars rating={product.farmerRating} />
+              <Text style={styles.farmerName}>{product.farmer.name}</Text>
+              <Stars rating={farmerRating} count={product.ratingsQuantity || 0} />
               <Text style={styles.farmerLocation}>
                 <Feather name="map-pin" size={10} color={Colors.textSecondary} />
-                {' '}{product.farmerCity} · {product.distanceKm} km away
+                {' '}{farmerCity}
               </Text>
             </View>
             <TouchableOpacity style={styles.viewProfileBtn}>
@@ -201,9 +236,9 @@ export default function ProductDetailScreen() {
             </View>
             <View style={styles.aiMetrics}>
               {[
-                { label: 'Size Uniformity',  val: product.aiScore - 2 },
-                { label: 'Freshness',        val: product.aiScore     },
-                { label: 'Blemish-Free',     val: product.aiScore + 1 },
+                { label: 'Size Uniformity',  val: aiScore - 2 },
+                { label: 'Freshness',        val: aiScore     },
+                { label: 'Blemish-Free',     val: aiScore + 1 },
               ].map((m) => (
                 <View key={m.label} style={styles.aiMetric}>
                   <View style={styles.aiMetricRow}>
@@ -244,7 +279,7 @@ export default function ProductDetailScreen() {
           </Text>
           
           <TouchableOpacity
-            onPress={() => setQty((q) => Math.min(product.stockKg, q + 1))}
+            onPress={() => setQty((q) => Math.min(product.availableQuantity, q + 1))}
             style={styles.stepBtn}
             activeOpacity={0.7}
           >
