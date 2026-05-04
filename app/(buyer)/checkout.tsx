@@ -1,21 +1,25 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, StyleSheet, Dimensions, Alert, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { Colors } from '@/constants/colors';
 import { Button } from '@/components/ui';
 import { EscrowBadge } from '@/components/checkout/EscrowBadge';
 import { useCartStore } from '@/store/cartStore';
+import { LinearGradient } from 'expo-linear-gradient';
+import orderService from '@/services/order.service';
+
+const { width } = Dimensions.get('window');
 
 const MOCK_ADDRESSES = [
-  { id: '1', label: 'Home', address: 'House 42, Street 5, DHA Phase 6, Lahore', icon: 'home' },
-  { id: '2', label: 'Work', address: 'Office 12, Arfa Tower, Ferozepur Road, Lahore', icon: 'briefcase' },
+  { id: '1', label: 'Home Delivery', address: 'House 42, Street 5, DHA Phase 6, Lahore', icon: 'home' },
+  { id: '2', label: 'Godown / Office', address: 'Office 12, Arfa Tower, Ferozepur Road, Lahore', icon: 'briefcase' },
 ];
 
 const MOCK_PAYMENTS = [
-  { id: 'wallet', label: 'DigitalKisan Wallet', subtitle: 'Balance: ₨15,400', emoji: '💳', type: 'escrow' },
-  { id: 'jazzcash', label: 'JazzCash Escrow', subtitle: 'Pay securely via JazzCash', emoji: '🟡', type: 'escrow' },
-  { id: 'easypaisa', label: 'Easypaisa Escrow', subtitle: 'Pay securely via Easypaisa', emoji: '🟢', type: 'escrow' },
+  { id: 'wallet', label: 'DigitalKisan Wallet', subtitle: 'Balance: ₨ 15,400', emoji: '💳', type: 'escrow' },
+  { id: 'jazzcash', label: 'JazzCash Escrow', subtitle: 'Secure Mobile Payment', emoji: '🟡', type: 'escrow' },
+  { id: 'easypaisa', label: 'Easypaisa Escrow', subtitle: 'Secure Mobile Payment', emoji: '🟢', type: 'escrow' },
 ];
 
 export default function CheckoutScreen() {
@@ -23,22 +27,48 @@ export default function CheckoutScreen() {
   const [step, setStep] = useState(1);
   const [selectedAddress, setSelectedAddress] = useState('1');
   const [selectedPayment, setSelectedPayment] = useState('wallet');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Load live cart data
   const items = useCartStore((s) => s.items);
   const totalPrice = useCartStore((s) => s.totalPrice);
+  const clearCart = useCartStore((s) => s.clearCart);
   const delivery = totalPrice > 0 ? 80 : 0;
   const tax = +(totalPrice * 0.05).toFixed(2);
   const grandTotal = totalPrice + delivery + tax;
 
-  const handleNext = () => {
+  const handleNext = async () => {
     if (step < 3) {
       setStep(step + 1);
-    } else {
-      // Complete order
-      const clearCart = useCartStore.getState().clearCart;
+      return;
+    }
+
+    // Step 3: Submit — Create real orders for each cart item
+    setIsSubmitting(true);
+    try {
+      const address = MOCK_ADDRESSES.find(a => a.id === selectedAddress)!;
+
+      // Create one order per cart item (each item can be from a different farmer)
+      const orderPromises = items.map(item =>
+        orderService.create({
+          productId: item.productId,
+          quantity: item.quantity,
+          shippingAddress: { address: address.address },
+          paymentGatewayRef: `${selectedPayment.toUpperCase()}_${Date.now()}`,
+        })
+      );
+
+      await Promise.all(orderPromises);
       clearCart();
-      router.replace('/(buyer)/order-confirmed');
+      router.replace('/(buyer)/order-confirmed' as any);
+    } catch (e: any) {
+      Alert.alert(
+        'Order Failed',
+        e?.response?.data?.message ?? 'Something went wrong. Please try again.',
+        [{ text: 'OK' }]
+      );
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -47,116 +77,115 @@ export default function CheckoutScreen() {
     else router.back();
   };
 
-  // Reusable Step circle
   const StepIndicator = ({ num, label, isActive, isDone }: { num: number, label: string, isActive: boolean, isDone: boolean }) => (
-    <View className="items-center">
-      <View className={`w-10 h-10 rounded-full items-center justify-center mb-1.5 border-2 ${isActive || isDone ? 'bg-primary border-primary' : 'bg-white border-gray-300'}`}>
+    <View style={styles.stepItem}>
+      <View style={[styles.stepCircle, (isActive || isDone) ? styles.stepCircleActive : styles.stepCircleInactive]}>
         {isDone ? (
-          <Feather name="check" size={20} color="#fff" />
+          <Feather name="check" size={18} color="#fff" />
         ) : (
-          <Text className={`font-bold text-sm ${isActive ? 'text-white' : 'text-gray-400'}`}>{num}</Text>
+          <Text style={[styles.stepNum, isActive ? { color: '#fff' } : { color: '#94A3B8' }]}>{num}</Text>
         )}
       </View>
-      <Text className={`text-xs uppercase font-bold tracking-wider ${isActive ? 'text-primary' : isDone ? 'text-textPrimary' : 'text-gray-400'}`}>{label}</Text>
+      <Text style={[styles.stepLabel, isActive ? { color: Colors.agri.sabz } : { color: '#94A3B8' }]}>{label}</Text>
     </View>
   );
 
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} className="flex-1 bg-background pt-12">
+    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.container}>
       {/* ── HEADER ── */}
-      <View className="px-6 mb-2 flex-row items-center border-b border-gray-100 pb-4">
-        <TouchableOpacity onPress={handleBack} className="w-10 h-10 items-center justify-center rounded-xl bg-gray-50 mr-4">
+      <View style={styles.header}>
+        <TouchableOpacity onPress={handleBack} style={styles.backBtn}>
           <Feather name="arrow-left" size={20} color={Colors.textPrimary} />
         </TouchableOpacity>
-        <Text className="text-xl font-bold text-textPrimary">Secure Checkout</Text>
-        <View className="ml-auto bg-green-50 px-3 py-1.5 rounded-full flex-row items-center">
-           <Feather name="shield" size={14} color={Colors.green[700]} />
-           <Text className="text-green-800 text-[10px] font-bold ml-1.5 uppercase">Protected</Text>
+        <Text style={styles.headerTitle}>Secure Checkout</Text>
+        <View style={styles.shieldBadge}>
+           <Feather name="shield" size={12} color="#059669" />
+           <Text style={styles.shieldText}>Escrow Active</Text>
         </View>
       </View>
 
       {/* ── PROGRESS TRACKER ── */}
-      <View className="flex-row justify-center items-center px-8 mb-6 mt-4">
-        <StepIndicator num={1} label="Address" isActive={step === 1} isDone={step > 1} />
-        <View className={`h-[2px] w-12 mx-3 -mt-4 ${step > 1 ? 'bg-primary' : 'bg-gray-200'}`} />
-        <StepIndicator num={2} label="Payment" isActive={step === 2} isDone={step > 2} />
-        <View className={`h-[2px] w-12 mx-3 -mt-4 ${step > 2 ? 'bg-primary' : 'bg-gray-200'}`} />
+      <View style={styles.progressTracker}>
+        <StepIndicator num={1} label="Shipping" isActive={step === 1} isDone={step > 1} />
+        <View style={[styles.progressLine, { backgroundColor: step > 1 ? Colors.agri.sabz : '#F1F5F9' }]} />
+        <StepIndicator num={2} label="Escrow" isActive={step === 2} isDone={step > 2} />
+        <View style={[styles.progressLine, { backgroundColor: step > 2 ? Colors.agri.sabz : '#F1F5F9' }]} />
         <StepIndicator num={3} label="Confirm" isActive={step === 3} isDone={false} />
       </View>
 
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         
         {/* ── STEP 1: DELIVERY ── */}
         {step === 1 && (
           <View>
-            <Text className="text-xl font-bold text-textPrimary mb-5">Where should we deliver?</Text>
+            <Text style={styles.stepTitle}>Where should we deliver?</Text>
             
             {MOCK_ADDRESSES.map(addr => (
               <TouchableOpacity 
                 key={addr.id}
                 onPress={() => setSelectedAddress(addr.id)}
-                className={`flex-row p-5 rounded-2xl border mb-4 shadow-sm ${selectedAddress === addr.id ? 'bg-primary-50 border-primary' : 'bg-white border-gray-200'}`}
+                style={[styles.addressCard, selectedAddress === addr.id && styles.addressCardActive]}
               >
-                <View className={`w-12 h-12 rounded-full items-center justify-center mr-4 ${selectedAddress === addr.id ? 'bg-primary' : 'bg-gray-100'}`}>
-                  <Feather name={addr.icon as any} size={20} color={selectedAddress === addr.id ? '#fff' : Colors.textSecondary} />
+                <View style={[styles.addressIcon, { backgroundColor: selectedAddress === addr.id ? Colors.agri.sabz : '#F8FAFC' }]}>
+                  <Feather name={addr.icon as any} size={20} color={selectedAddress === addr.id ? '#fff' : '#94A3B8'} />
                 </View>
-                <View className="flex-1 justify-center">
-                  <Text className="font-bold text-textPrimary text-base mb-1">{addr.label}</Text>
-                  <Text className="text-textSecondary text-xs leading-5">{addr.address}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.addressLabel}>{addr.label}</Text>
+                  <Text style={styles.addressSub}>{addr.address}</Text>
                 </View>
-                <View className="ml-3 justify-center">
-                  <View className={`w-6 h-6 rounded-full border-2 items-center justify-center ${selectedAddress === addr.id ? 'border-primary bg-primary' : 'border-gray-300 bg-transparent'}`}>
-                    {selectedAddress === addr.id && <Feather name="check" size={12} color="#fff" />}
-                  </View>
+                <View style={[styles.radioCircle, selectedAddress === addr.id && styles.radioActive]}>
+                  {selectedAddress === addr.id && <View style={styles.radioInner} />}
                 </View>
               </TouchableOpacity>
             ))}
 
-            <TouchableOpacity className="flex-row items-center justify-center bg-white border-2 border-dashed border-gray-300 rounded-2xl p-4 mb-6">
-              <Feather name="plus" size={20} color={Colors.primary} />
-              <Text className="text-primary font-bold ml-2">Add New Address</Text>
+            <TouchableOpacity style={styles.addNewAddr}>
+              <Feather name="plus" size={18} color={Colors.agri.sabz} />
+              <Text style={styles.addNewAddrText}>Add New Destination</Text>
             </TouchableOpacity>
 
-            <Text className="text-textPrimary font-bold mb-2">Delivery Instructions</Text>
-            <TextInput 
-              placeholder="e.g. Call upon arrival, leave at door..."
-              multiline
-              numberOfLines={3}
-              className="bg-white border border-gray-200 rounded-xl p-4 text-textPrimary h-24 text-top"
-              style={{ textAlignVertical: 'top' }}
-            />
+            <View style={styles.noteBox}>
+              <Text style={styles.noteLabel}>Delivery Instructions</Text>
+              <TextInput 
+                placeholder="e.g. Call my brother at 03xx-xxxxxx..."
+                placeholderTextColor="#94A3B8"
+                multiline
+                style={styles.noteInput}
+              />
+            </View>
           </View>
         )}
 
         {/* ── STEP 2: PAYMENT ── */}
         {step === 2 && (
           <View>
-            <View className="mb-6">
-              <EscrowBadge variant="holding" size="sm" />
+            <View style={styles.escrowHeader}>
+               <EscrowBadge variant="holding" size="sm" />
+               <Text style={styles.escrowDesc}>Your funds are safely held by DigitalKisan and only released to the farmer after you confirm receipt of quality produce.</Text>
             </View>
 
-            <Text className="text-xl font-bold text-textPrimary mb-5">Select Escrow Provider</Text>
+            <Text style={styles.stepTitle}>Select Escrow Provider</Text>
             
             {MOCK_PAYMENTS.map(pay => (
               <TouchableOpacity 
                 key={pay.id}
                 onPress={() => setSelectedPayment(pay.id)}
-                className={`flex-row items-center p-5 rounded-2xl border mb-4 shadow-sm ${selectedPayment === pay.id ? 'bg-primary-50 border-primary' : 'bg-white border-gray-200'}`}
+                style={[styles.payCard, selectedPayment === pay.id && styles.payCardActive]}
               >
-                <Text className="text-4xl mr-4">{pay.emoji}</Text>
-                <View className="flex-1">
-                  <View className="flex-row items-center mb-1">
-                    <Text className="font-bold text-textPrimary text-base mr-2">{pay.label}</Text>
-                    {pay.type === 'escrow' && (
-                      <View className="bg-blue-100 px-2 py-0.5 rounded border border-blue-200">
-                        <Text className="text-[9px] font-bold text-blue-800 uppercase">Escrow</Text>
-                      </View>
-                    )}
-                  </View>
-                  <Text className="text-textSecondary text-xs font-medium">{pay.subtitle}</Text>
+                <View style={styles.payEmojiWrap}>
+                  <Text style={{ fontSize: 24 }}>{pay.emoji}</Text>
                 </View>
-                <View className={`w-6 h-6 rounded-full border-2 items-center justify-center ${selectedPayment === pay.id ? 'border-primary bg-primary' : 'border-gray-300 bg-transparent'}`}>
-                  {selectedPayment === pay.id && <Feather name="check" size={12} color="#fff" />}
+                <View style={{ flex: 1 }}>
+                   <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      <Text style={styles.payLabel}>{pay.label}</Text>
+                      <View style={styles.verifiedPayBadge}>
+                         <Text style={styles.verifiedPayText}>Verified</Text>
+                      </View>
+                   </View>
+                   <Text style={styles.paySub}>{pay.subtitle}</Text>
+                </View>
+                <View style={[styles.radioCircle, selectedPayment === pay.id && styles.radioActive]}>
+                  {selectedPayment === pay.id && <View style={styles.radioInner} />}
                 </View>
               </TouchableOpacity>
             ))}
@@ -166,95 +195,209 @@ export default function CheckoutScreen() {
         {/* ── STEP 3: CONFIRM ── */}
         {step === 3 && (
           <View>
-            <Text className="text-xl font-bold text-textPrimary mb-4">Review Order</Text>
+            <Text style={styles.stepTitle}>Final Verification</Text>
 
-            <View className="mb-6">
-              <EscrowBadge variant="locked" amount={grandTotal} />
-            </View>
-
-            <View className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm mb-6">
-              <Text className="font-bold text-textPrimary mb-3 border-b border-gray-100 pb-3 text-lg">Order Summary</Text>
-              
-              {items.map(item => (
-                <View key={item.productId} className="flex-row justify-between mb-3">
-                  <View className="flex-1 mr-4">
-                    <Text className="text-textPrimary font-medium">{item.name}</Text>
-                    <Text className="text-textSecondary text-xs">Qty: {item.quantity} {item.unit}</Text>
+            <View style={styles.paymentSummary}>
+               <View style={styles.summaryHeader}>
+                  <Text style={styles.summaryTitle}>Bill Summary</Text>
+                  <View style={styles.paymentMethodTag}>
+                     <Text style={{ fontSize: 14 }}>{MOCK_PAYMENTS.find(p => p.id === selectedPayment)?.emoji}</Text>
+                     <Text style={styles.paymentMethodName}>{MOCK_PAYMENTS.find(p => p.id === selectedPayment)?.label}</Text>
                   </View>
-                  <Text className="text-textPrimary font-medium">₨{(item.price * item.quantity).toLocaleString()}</Text>
-                </View>
-              ))}
-              
-              <View className="w-full h-[1px] bg-gray-100 my-2" />
-              
-              <View className="flex-row justify-between mb-2 mt-2">
-                <Text className="text-textSecondary">Subtotal</Text>
-                <Text className="text-textPrimary font-medium">₨{totalPrice.toLocaleString()}</Text>
-              </View>
-              <View className="flex-row justify-between mb-2">
-                <Text className="text-textSecondary">Delivery</Text>
-                <Text className="text-textPrimary font-medium">₨{delivery}</Text>
-              </View>
-              <View className="flex-row justify-between mb-4">
-                <Text className="text-textSecondary">GST (5%)</Text>
-                <Text className="text-textPrimary font-medium">₨{tax}</Text>
-              </View>
+               </View>
 
-              <View className="w-full h-[1px] bg-gray-200 mb-4" />
-              
-              <View className="flex-row justify-between items-center">
-                <Text className="text-lg font-bold text-textPrimary">Total Payment</Text>
-                <Text className="text-2xl font-bold text-primary">₨{grandTotal.toLocaleString()}</Text>
-              </View>
+               <View style={styles.summaryList}>
+                  {items.map(item => (
+                    <View key={item.productId} style={styles.summaryItem}>
+                      <Text style={styles.summaryItemName}>{item.name} <Text style={{ color: '#94A3B8' }}>x {item.quantity}</Text></Text>
+                      <Text style={styles.summaryItemPrice}>₨ {(item.price * item.quantity).toLocaleString()}</Text>
+                    </View>
+                  ))}
+                  <View style={styles.divider} />
+                  <View style={styles.summaryItem}>
+                    <Text style={styles.subTotalLabel}>Subtotal</Text>
+                    <Text style={styles.subTotalVal}>₨ {totalPrice.toLocaleString()}</Text>
+                  </View>
+                  <View style={styles.summaryItem}>
+                    <Text style={styles.subTotalLabel}>Delivery Fee</Text>
+                    <Text style={styles.subTotalVal}>₨ {delivery}</Text>
+                  </View>
+                  <View style={styles.summaryItem}>
+                    <Text style={styles.subTotalLabel}>Processing / Tax</Text>
+                    <Text style={styles.subTotalVal}>₨ {tax}</Text>
+                  </View>
+               </View>
+
+               <View style={styles.totalSection}>
+                  <Text style={styles.finalLabel}>Amount to Lock</Text>
+                  <Text style={styles.finalVal}>₨ {grandTotal.toLocaleString()}</Text>
+               </View>
             </View>
 
-            {/* Delivery address mini card */}
-            <View className="bg-white p-4 rounded-xl border border-gray-200 mb-4 flex-row items-center">
-              <View className="w-10 h-10 bg-gray-100 rounded-full items-center justify-center mr-3">
-                <Feather name="map-pin" size={16} color={Colors.textSecondary} />
-              </View>
-              <View className="flex-1">
-                <Text className="text-[10px] text-textSecondary uppercase font-bold tracking-wider mb-0.5">Delivering To</Text>
-                <Text className="font-bold text-textPrimary text-sm">{MOCK_ADDRESSES.find(a => a.id === selectedAddress)?.label}</Text>
-              </View>
-              <TouchableOpacity onPress={() => setStep(1)}>
-                <Text className="text-primary font-bold text-xs uppercase tracking-wider">Edit</Text>
-              </TouchableOpacity>
+            <View style={styles.destinationPreview}>
+               <View style={styles.destIcon}>
+                  <Feather name="map-pin" size={16} color={Colors.agri.sabz} />
+               </View>
+               <View style={{ flex: 1 }}>
+                  <Text style={styles.destTitle}>Shipment Destination</Text>
+                  <Text style={styles.destVal} numberOfLines={1}>{MOCK_ADDRESSES.find(a => a.id === selectedAddress)?.address}</Text>
+               </View>
+               <TouchableOpacity onPress={() => setStep(1)}>
+                  <Text style={styles.editLink}>Change</Text>
+               </TouchableOpacity>
             </View>
 
-             {/* Payment method mini card */}
-             <View className="bg-white p-4 rounded-xl border border-gray-200 mb-6 flex-row items-center">
-              <Text className="text-2xl mr-3">{MOCK_PAYMENTS.find(p => p.id === selectedPayment)?.emoji}</Text>
-              <View className="flex-1">
-                <Text className="text-[10px] text-textSecondary uppercase font-bold tracking-wider mb-0.5">Paying via Escrow</Text>
-                <Text className="font-bold text-textPrimary text-sm">{MOCK_PAYMENTS.find(p => p.id === selectedPayment)?.label}</Text>
-              </View>
-              <TouchableOpacity onPress={() => setStep(2)}>
-                <Text className="text-primary font-bold text-xs uppercase tracking-wider">Edit</Text>
-              </TouchableOpacity>
+            <View style={styles.securityWarning}>
+               <Feather name="lock" size={14} color="#065F46" />
+               <Text style={styles.securityText}>Funds will be placed in a non-custodial escrow until successful delivery confirmation.</Text>
             </View>
-
           </View>
         )}
       </ScrollView>
 
       {/* ── FOOTER ACTION ── */}
-      <View className="px-6 py-5 bg-white border-t border-gray-100 shadow-[0_-10px_15px_-3px_rgba(0,0,0,0.05)]">
-        <Button 
-          variant="primary" 
-          label={step === 3 ? "Lock Funds & Secure Order →" : "Continue"} 
+      <View style={styles.footer}>
+        <TouchableOpacity
+          activeOpacity={0.8}
           onPress={handleNext}
-          size="lg"
-          fullWidth
-          leftIcon={step === 3 ? <Feather name="lock" size={18} color="#fff" /> : undefined}
-          style={step === 3 ? { backgroundColor: Colors.agri.shab } : undefined} // Darker trust color
-        />
+          disabled={isSubmitting}
+          style={[styles.mainBtn, step === 3 && { backgroundColor: '#1E293B' }, isSubmitting && { opacity: 0.7 }]}
+        >
+          {isSubmitting ? (
+            <ActivityIndicator color="#fff" size="small" />
+          ) : (
+            <>
+              <Text style={styles.mainBtnText}>
+                {step === 3 ? "Lock Funds & Confirm Order" : "Proceed to Escrow"}
+              </Text>
+              <Feather name={step === 3 ? "shield" : "arrow-right"} size={18} color="#fff" style={{ marginLeft: 10 }} />
+            </>
+          )}
+        </TouchableOpacity>
         {step === 3 && (
-          <Text className="text-center text-[10px] text-textSecondary mt-3 uppercase tracking-widest font-bold">
-            No charge until delivery is confirmed
+          <Text style={styles.footerDisclaimer}>
+            100% SATISFACTION GUARANTEE · ESCROW PROTECTED
           </Text>
         )}
       </View>
     </KeyboardAvoidingView>
   );
 }
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: '#F8FAFB' },
+  header: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingTop: 60, paddingBottom: 20, paddingHorizontal: 24,
+    backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#F1F5F9',
+  },
+  backBtn: {
+    width: 40, height: 40, borderRadius: 12, backgroundColor: '#F1F5F9',
+    alignItems: 'center', justifyContent: 'center', marginRight: 16,
+  },
+  headerTitle: { fontSize: 18, fontWeight: '900', color: Colors.textPrimary, flex: 1 },
+  shieldBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: '#ECFDF5', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6,
+  },
+  shieldText: { color: '#059669', fontSize: 10, fontWeight: '800', textTransform: 'uppercase' },
+
+  progressTracker: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 24, paddingHorizontal: 40 },
+  stepItem: { alignItems: 'center', gap: 6 },
+  stepCircle: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', borderWidth: 2 },
+  stepCircleActive: { backgroundColor: Colors.agri.sabz, borderColor: Colors.agri.sabz },
+  stepCircleInactive: { backgroundColor: '#fff', borderColor: '#E2E8F0' },
+  stepNum: { fontSize: 14, fontWeight: '900' },
+  stepLabel: { fontSize: 10, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
+  progressLine: { width: 40, height: 2, marginHorizontal: 8, marginTop: -18 },
+
+  scrollContent: { paddingHorizontal: 24, paddingBottom: 140 },
+  stepTitle: { fontSize: 22, fontWeight: '900', color: '#111827', marginBottom: 24, letterSpacing: -0.5 },
+
+  // Addresses
+  addressCard: {
+    flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff',
+    padding: 16, borderRadius: 20, marginBottom: 12, gap: 12,
+    borderWidth: 1, borderColor: '#F1F5F9',
+  },
+  addressCardActive: { borderColor: Colors.agri.sabz, backgroundColor: '#FAFEFB' },
+  addressIcon: { width: 48, height: 48, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  addressLabel: { fontSize: 15, fontWeight: '800', color: '#1E293B', marginBottom: 3 },
+  addressSub: { fontSize: 12, color: '#94A3B8', fontWeight: '500', lineHeight: 18 },
+  radioCircle: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: '#E2E8F0', alignItems: 'center', justifyContent: 'center' },
+  radioActive: { borderColor: Colors.agri.sabz },
+  radioInner: { width: 10, height: 10, borderRadius: 5, backgroundColor: Colors.agri.sabz },
+
+  addNewAddr: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    paddingVertical: 14, backgroundColor: '#fff', borderRadius: 16,
+    borderWidth: 1, borderStyle: 'dashed', borderColor: Colors.agri.sabz,
+    marginTop: 8, marginBottom: 24, gap: 8,
+  },
+  addNewAddrText: { color: Colors.agri.sabz, fontSize: 14, fontWeight: '800' },
+
+  noteBox: { marginTop: 8 },
+  noteLabel: { fontSize: 13, fontWeight: '800', color: Colors.textPrimary, marginBottom: 10, textTransform: 'uppercase' },
+  noteInput: {
+    backgroundColor: '#fff', borderRadius: 16, padding: 16, height: 100,
+    borderWidth: 1, borderColor: '#F1F5F9', textAlignVertical: 'top',
+    fontSize: 14, fontWeight: '600', color: '#1E293B',
+  },
+
+  // Escrow Step
+  escrowHeader: { backgroundColor: '#F8FAFC', padding: 20, borderRadius: 20, marginBottom: 28, borderWidth: 1, borderColor: '#EEF2F7' },
+  escrowDesc: { fontSize: 12, color: '#64748B', fontWeight: '500', marginTop: 12, lineHeight: 18 },
+
+  payCard: {
+    flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff',
+    padding: 16, borderRadius: 20, marginBottom: 12, gap: 12,
+    borderWidth: 1, borderColor: '#F1F5F9',
+  },
+  payCardActive: { borderColor: Colors.agri.sabz, backgroundColor: '#FAFEFB' },
+  payEmojiWrap: { width: 50, height: 50, borderRadius: 16, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center' },
+  payLabel: { fontSize: 16, fontWeight: '800', color: '#1E293B' },
+  verifiedPayBadge: { backgroundColor: '#DBEAFE', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, marginLeft: 8 },
+  verifiedPayText: { fontSize: 8, fontWeight: '900', color: '#1E40AF', textTransform: 'uppercase' },
+  paySub: { fontSize: 12, color: '#94A3B8', fontWeight: '500', marginTop: 2 },
+
+  // Summary Step
+  paymentSummary: { backgroundColor: '#fff', borderRadius: 24, padding: 20, borderWidth: 1, borderColor: '#F1F5F9', marginBottom: 20 },
+  summaryHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#F8FAFB', paddingBottom: 16, marginBottom: 16 },
+  summaryTitle: { fontSize: 16, fontWeight: '900', color: '#1E293B' },
+  paymentMethodTag: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#F1F5F9', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12 },
+  paymentMethodName: { fontSize: 11, fontWeight: '800', color: '#475569' },
+  summaryList: { gap: 12 },
+  summaryItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  summaryItemName: { fontSize: 14, fontWeight: '700', color: '#1E293B' },
+  summaryItemPrice: { fontSize: 14, fontWeight: '800', color: '#1E293B' },
+  divider: { height: 1, backgroundColor: '#F8FAFB', marginVertical: 4 },
+  subTotalLabel: { fontSize: 13, color: '#94A3B8', fontWeight: '600' },
+  subTotalVal: { fontSize: 14, color: '#1E293B', fontWeight: '700' },
+  totalSection: { marginTop: 20, paddingTop: 16, borderTopWidth: 1, borderTopColor: '#F1F5F9', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  finalLabel: { fontSize: 16, fontWeight: '900', color: '#1E293B' },
+  finalVal: { fontSize: 22, fontWeight: '900', color: Colors.agri.sabz },
+
+  destinationPreview: {
+    flexDirection: 'row', alignItems: 'center', padding: 16, backgroundColor: '#fff',
+    borderRadius: 20, borderWidth: 1, borderColor: '#F1F5F9', gap: 12, marginBottom: 12,
+  },
+  destIcon: { width: 36, height: 36, borderRadius: 10, backgroundColor: '#ECFDF5', alignItems: 'center', justifyContent: 'center' },
+  destTitle: { fontSize: 11, fontWeight: '800', color: '#94A3B8', textTransform: 'uppercase' },
+  destVal: { fontSize: 14, fontWeight: '700', color: '#1E293B', marginTop: 2 },
+  editLink: { color: Colors.agri.sabz, fontSize: 12, fontWeight: '800' },
+
+  securityWarning: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, opacity: 0.8 },
+  securityText: { fontSize: 10, color: '#065F46', fontWeight: '600', flex: 1, lineHeight: 14 },
+
+  footer: {
+    position: 'absolute', bottom: 0, left: 0, right: 0,
+    backgroundColor: '#fff', padding: 24, borderTopWidth: 1, borderTopColor: '#F1F5F9', paddingBottom: Platform.OS === 'ios' ? 40 : 24,
+  },
+  mainBtn: {
+    backgroundColor: Colors.agri.sabz, height: 60, borderRadius: 18,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    shadowColor: Colors.agri.sabz, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 10, elevation: 5,
+  },
+  mainBtnText: { color: '#fff', fontSize: 16, fontWeight: '900' },
+  footerDisclaimer: { textAlign: 'center', fontSize: 10, fontWeight: '800', color: '#94A3B8', marginTop: 14, letterSpacing: 1 },
+});

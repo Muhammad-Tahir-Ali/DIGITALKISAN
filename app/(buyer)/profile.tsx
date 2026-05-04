@@ -66,7 +66,15 @@ export default function BuyerProfile() {
   const { user, logout } = useAuth();
   const router = useRouter();
 
+  const handleComingSoon = () => Alert.alert('Coming Soon', 'This feature is currently under development!');
+
   const handleLogout = () => {
+    if (Platform.OS === 'web') {
+      const confirmed = window.confirm('Are you sure you want to sign out?');
+      if (confirmed) logout();
+      return;
+    }
+
     Alert.alert(
       'Sign Out',
       'You will be logged out of your account. Are you sure?',
@@ -143,33 +151,33 @@ export default function BuyerProfile() {
         <View style={styles.content}>
           {/* ── ACCOUNT ──────────────────────────────────────────── */}
           <SectionCard title="Account">
-            <SettingsRow icon="user" label="Full Name" value={user?.name ?? '–'} onPress={() => {}} />
-            <SettingsRow icon="phone" label="Phone Number" value={user?.phone ?? 'Not set'} onPress={() => {}} />
-            <SettingsRow icon="mail" label="Email" value={user?.email?.split('@')[0] + '…'} onPress={() => {}} />
-            <SettingsRow icon="map-pin" label="Saved Addresses" badge="2" onPress={() => {}} />
+            <SettingsRow icon="user" label="Full Name" value={user?.name ?? '–'} onPress={handleComingSoon} />
+            <SettingsRow icon="phone" label="Phone Number" value={user?.phone ?? 'Not set'} onPress={handleComingSoon} />
+            <SettingsRow icon="mail" label="Email" value={user?.email?.split('@')[0] + '…'} onPress={handleComingSoon} />
+            <SettingsRow icon="map-pin" label="Saved Addresses" badge="2" onPress={handleComingSoon} />
           </SectionCard>
 
           {/* ── ORDERS & WALLET ──────────────────────────────────── */}
           <SectionCard title="Orders & Wallet">
             <SettingsRow icon="package" label="My Orders" onPress={() => router.push('/(buyer)/orders' as any)} />
-            <SettingsRow icon="credit-card" label="Wallet Balance" value="₨ 12,500" onPress={() => {}} />
-            <SettingsRow icon="clock" label="Transaction History" onPress={() => {}} />
-            <SettingsRow icon="shield" label="Escrow Status" badge="1 Active" onPress={() => {}} />
+            <SettingsRow icon="credit-card" label="Wallet Balance" value="₨ 12,500" onPress={handleComingSoon} />
+            <SettingsRow icon="clock" label="Transaction History" onPress={handleComingSoon} />
+            <SettingsRow icon="shield" label="Escrow Status" badge="1 Active" onPress={handleComingSoon} />
           </SectionCard>
 
           {/* ── PREFERENCES ──────────────────────────────────────── */}
           <SectionCard title="Preferences">
             <SettingsRow icon="bell" label="Push Notifications" toggle />
             <SettingsRow icon="moon" label="Dark Mode" toggle />
-            <SettingsRow icon="globe" label="Language" value="English" onPress={() => {}} />
+            <SettingsRow icon="globe" label="Language" value="English" onPress={handleComingSoon} />
           </SectionCard>
 
           {/* ── SUPPORT ─────────────────────────────────────────── */}
           <SectionCard title="Support">
-            <SettingsRow icon="help-circle" label="Help Center" onPress={() => {}} />
-            <SettingsRow icon="message-circle" label="Chat with Support" onPress={() => {}} />
-            <SettingsRow icon="star" label="Rate DigitalKisan" onPress={() => {}} />
-            <SettingsRow icon="info" label="About" value="v1.0.0" onPress={() => {}} />
+            <SettingsRow icon="help-circle" label="Help Center" onPress={handleComingSoon} />
+            <SettingsRow icon="message-circle" label="Chat with Support" onPress={handleComingSoon} />
+            <SettingsRow icon="star" label="Rate DigitalKisan" onPress={handleComingSoon} />
+            <SettingsRow icon="info" label="About" value="v1.0.0" onPress={handleComingSoon} />
           </SectionCard>
 
           {/* ── SIGN OUT ─────────────────────────────────────────── */}

@@ -1,120 +1,153 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  ToastAndroid,
-  Alert,
+  View, Text, TextInput, TouchableOpacity, KeyboardAvoidingView,
+  Platform, ScrollView, StyleSheet, Dimensions, Alert
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Feather } from '@expo/vector-icons';
-import { Button } from '@/components/ui';
 import { Colors } from '@/constants/colors';
 import { useAuth } from '@/hooks/useAuth';
+import { Button } from '@/components/ui';
 
-const loginSchema = z.object({
-  phone: z
-    .string()
-    .regex(/^(?:\+92|0)[0-9]{10}$/, 'Invalid Pakistani phone number format'),
+const { width } = Dimensions.get('window');
+
+// ---------------------------------------------------------------------------
+// Validation Schemas
+// ---------------------------------------------------------------------------
+const authSchema = z.object({
+  name: z.string().optional().refine((val) => {
+    // Required only for register
+    return true; 
+  }, 'Name is required'),
+  phone: z.string().regex(/^(?:\+92|0)[0-9]{10}$/, 'Invalid Pakistan phone number format'),
   password: z.string().min(8, 'Password must be at least 8 characters'),
 });
 
-type LoginForm = z.infer<typeof loginSchema>;
+type AuthForm = z.infer<typeof authSchema>;
 
-export default function LoginScreen() {
+export default function AuthScreen() {
   const router = useRouter();
-  const { login } = useAuth();
+  const { role } = useLocalSearchParams<{ role: string }>();
+  const { login, register } = useAuth();
+  
+  const [isLogin, setIsLogin] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
 
-  const {
-    control,
-    handleSubmit,
-    formState: { errors, isSubmitting },
-  } = useForm<LoginForm>({
-    resolver: zodResolver(loginSchema),
-    defaultValues: {
-      phone: '',
-      password: '',
-    },
+  // Determine theme color based on role
+  const accentColor = useMemo(() => {
+    if (role === 'farmer') return Colors.agri.sabz;
+    if (role === 'buyer') return Colors.agri.peela;
+    return Colors.primary;
+  }, [role]);
+
+  const { control, handleSubmit, formState: { errors, isSubmitting } } = useForm<AuthForm>({
+    resolver: zodResolver(authSchema),
+    defaultValues: { name: '', phone: '', password: '' },
   });
 
-  const onSubmit = async (data: LoginForm) => {
+  const onSubmit = async (data: AuthForm) => {
     try {
-      const user = await login({ phone: data.phone, password: data.password });
-      
-      // Navigate based on role
-      switch (user?.role) {
-        case 'farmer':
-          router.replace('/(farmer)/dashboard');
-          break;
-        case 'buyer':
-          router.replace('/(buyer)/home');
-          break;
-        case 'logistics':
-          router.replace('/(logistics)/dashboard');
-          break;
-        case 'admin':
-          router.replace('/(admin)/dashboard');
-          break;
-        default:
-          router.replace('/(auth)/role-select');
-          break;
-      }
-    } catch (err: any) {
-      const msg = err.message || 'Login failed';
-      if (Platform.OS === 'android') {
-        ToastAndroid.show(msg, ToastAndroid.SHORT);
+      if (isLogin) {
+        await login({ email: `${data.phone}@digitalkisan.app`, password: data.password });
       } else {
-        Alert.alert('Error', msg);
+        await register({
+          name: data.name || 'New User',
+          phone: data.phone,
+          password: data.password,
+          role: (role as any) || 'buyer',
+          email: `${data.phone}@digitalkisan.app` // Mapping phone to semi-unique email for system compatibility
+        });
       }
+
+      // Root layout/index handles navigation based on auth state
+      router.replace('/');
+    } catch (err: any) {
+      Alert.alert('Authentication Error', err.message || 'Something went wrong. Please try again.');
     }
   };
 
   return (
     <KeyboardAvoidingView
-      className="flex-1 bg-white"
-      style={{ flex: 1, backgroundColor: '#fff' }}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <ScrollView
-        contentContainerStyle={{ flexGrow: 1 }}
-        keyboardShouldPersistTaps="handled"
-      >
+      <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+        
         {/* Header */}
-        <View className="px-6 pt-16 pb-6">
+        <View style={styles.header}>
           <TouchableOpacity 
-            className="mb-8 w-10 h-10 items-center justify-center rounded-full bg-gray-50"
+            style={styles.backBtn}
             onPress={() => router.back()}
           >
-            <Feather name="arrow-left" size={24} color={Colors.textPrimary} />
+            <Feather name="arrow-left" size={22} color={Colors.textPrimary} />
           </TouchableOpacity>
-          
-          <Text className="text-3xl font-bold text-textPrimary mb-2">Welcome Back</Text>
-          <Text className="text-textSecondary text-base">Sign in to your account</Text>
+          <Text style={styles.title}>{isLogin ? 'Welcome Back!' : 'Create Account'}</Text>
+          <Text style={styles.subtitle}>
+            {isLogin 
+              ? `Sign in as a DigitalKisan ${role || 'Member'}` 
+              : `Join our community as a ${role || 'Member'}`}
+          </Text>
         </View>
 
-        {/* Form */}
-        <View className="px-6 flex-1">
-          {/* Phone Input */}
-          <View className="mb-6">
-            <Text className="text-textPrimary font-medium mb-2">Phone Number</Text>
+        {/* Toggle Mode */}
+        <View style={styles.toggleContainer}>
+          <TouchableOpacity 
+            style={[styles.toggleBtn, isLogin && { backgroundColor: accentColor }]} 
+            onPress={() => setIsLogin(true)}
+          >
+            <Text style={[styles.toggleText, isLogin && styles.toggleTextActive]}>Login</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.toggleBtn, !isLogin && { backgroundColor: accentColor }]} 
+            onPress={() => setIsLogin(false)}
+          >
+            <Text style={[styles.toggleText, !isLogin && styles.toggleTextActive]}>Register</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Form Body */}
+        <View style={styles.form}>
+          
+          {!isLogin && (
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Full Name</Text>
+              <Controller
+                control={control}
+                name="name"
+                render={({ field: { onChange, onBlur, value } }) => (
+                  <View style={[styles.inputWrap, errors.name && styles.inputError]}>
+                    <Feather name="user" size={18} color="#94A3B8" />
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Enter your full name"
+                      placeholderTextColor="#94A3B8"
+                      onBlur={onBlur}
+                      onChangeText={onChange}
+                      value={value}
+                    />
+                  </View>
+                )}
+              />
+              {errors.name && <Text style={styles.errorText}>{errors.name.message}</Text>}
+            </View>
+          )}
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Phone Number</Text>
             <Controller
               control={control}
               name="phone"
               render={({ field: { onChange, onBlur, value } }) => (
-                <View className={`flex-row items-center border rounded-xl h-14 px-4 bg-surface ${errors.phone ? 'border-red-500' : 'border-gray-200 focus:border-primary'}`}>
-                  <Text className="text-xl mr-2">🇵🇰</Text>
+                <View style={[styles.inputWrap, errors.phone && styles.inputError]}>
+                  <Text style={styles.flag}>🇵🇰</Text>
+                  <Text style={styles.prefix}>+92</Text>
                   <TextInput
-                    className="flex-1 text-base text-textPrimary h-full"
-                    placeholder="+92 300 1234567"
-                    placeholderTextColor={Colors.textSecondary}
+                    style={styles.input}
+                    placeholder="300 1234567"
+                    placeholderTextColor="#94A3B8"
                     keyboardType="phone-pad"
                     onBlur={onBlur}
                     onChangeText={onChange}
@@ -123,76 +156,99 @@ export default function LoginScreen() {
                 </View>
               )}
             />
-            {errors.phone && (
-              <Text className="text-red-500 text-sm mt-1">{errors.phone.message}</Text>
-            )}
+            {errors.phone && <Text style={styles.errorText}>{errors.phone.message}</Text>}
           </View>
 
-          {/* Password Input */}
-          <View className="mb-2">
-            <Text className="text-textPrimary font-medium mb-2">Password</Text>
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Password</Text>
             <Controller
               control={control}
               name="password"
               render={({ field: { onChange, onBlur, value } }) => (
-                <View className={`flex-row items-center border rounded-xl h-14 px-4 bg-surface ${errors.password ? 'border-red-500' : 'border-gray-200 focus:border-primary'}`}>
+                <View style={[styles.inputWrap, errors.password && styles.inputError]}>
+                  <Feather name="lock" size={18} color="#94A3B8" />
                   <TextInput
-                    className="flex-1 text-base text-textPrimary h-full"
+                    style={styles.input}
                     placeholder="Enter your password"
-                    placeholderTextColor={Colors.textSecondary}
+                    placeholderTextColor="#94A3B8"
                     secureTextEntry={!showPassword}
                     onBlur={onBlur}
                     onChangeText={onChange}
                     value={value}
                   />
-                  <TouchableOpacity onPress={() => setShowPassword(!showPassword)} className="p-2">
-                    <Feather name={showPassword ? 'eye-off' : 'eye'} size={20} color={Colors.textSecondary} />
+                  <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
+                    <Feather name={showPassword ? 'eye-off' : 'eye'} size={18} color="#94A3B8" />
                   </TouchableOpacity>
                 </View>
               )}
             />
-            {errors.password && (
-              <Text className="text-red-500 text-sm mt-1">{errors.password.message}</Text>
-            )}
+            {errors.password && <Text style={styles.errorText}>{errors.password.message}</Text>}
           </View>
 
-          {/* Forgot Password */}
-          <View className="items-end mb-8">
-            <TouchableOpacity>
-              <Text className="text-secondary font-medium">Forgot Password?</Text>
+          {isLogin && (
+            <TouchableOpacity style={styles.forgotBtn} onPress={() => Alert.alert('Coming Soon', 'Password reset will be available soon!')}>
+              <Text style={[styles.forgotText, { color: accentColor }]}>Forgot Password?</Text>
             </TouchableOpacity>
-          </View>
+          )}
 
-          {/* Sign In Button */}
           <Button
-            variant="primary"
-            size="lg"
-            label="Sign In"
+            label={isLogin ? 'Sign In Securely' : 'Create My Account'}
             onPress={handleSubmit(onSubmit)}
             loading={isSubmitting}
             fullWidth
-            style={{ marginBottom: 24 }}
+            style={{ backgroundColor: accentColor, borderRadius: 16, height: 60, marginTop: 12 }}
           />
 
-          {/* Divider */}
-          <View className="flex-row items-center justify-center mb-8">
-            <View className="flex-1 h-[1px] bg-gray-200" />
-            <Text className="mx-4 text-textSecondary text-sm font-medium">or</Text>
-            <View className="flex-1 h-[1px] bg-gray-200" />
-          </View>
-
-          {/* Create Account Outline */}
-          <Button
-            variant="outline"
-            size="lg"
-            label="Create new account"
-            onPress={() => router.push('/(auth)/role-select')}
-            fullWidth
-            style={{ marginBottom: 24 }}
-          />
-
+          <Text style={styles.terms}>
+            By continuing, you agree to our <Text style={{ fontWeight: '700' }}>Terms of Service</Text> and <Text style={{ fontWeight: '700' }}>Privacy Policy</Text>.
+          </Text>
         </View>
+
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: '#F8FAFB' },
+  scrollContent: { paddingHorizontal: 24, paddingBottom: 60, paddingTop: 60 },
+  header: { marginBottom: 32 },
+  backBtn: {
+    width: 44, height: 44, borderRadius: 12,
+    backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center',
+    marginBottom: 24, shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05, shadowRadius: 5, elevation: 2,
+  },
+  title: { fontSize: 28, fontWeight: '900', color: Colors.textPrimary, letterSpacing: -0.5 },
+  subtitle: { fontSize: 15, color: Colors.textSecondary, fontWeight: '500', marginTop: 4 },
+  
+  toggleContainer: {
+    flexDirection: 'row', backgroundColor: '#E2E8F0',
+    borderRadius: 18, padding: 4, marginBottom: 32,
+  },
+  toggleBtn: { flex: 1, paddingVertical: 12, borderRadius: 14, alignItems: 'center' },
+  toggleText: { fontSize: 15, fontWeight: '700', color: '#64748B' },
+  toggleTextActive: { color: '#fff' },
+
+  form: { flex: 1 },
+  inputGroup: { marginBottom: 20 },
+  label: { fontSize: 13, fontWeight: '800', color: Colors.textPrimary, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
+  inputWrap: {
+    flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff',
+    borderRadius: 16, height: 60, borderWidth: 1, borderColor: '#E2E8F0',
+    paddingHorizontal: 16,
+  },
+  inputError: { borderColor: Colors.error },
+  input: { flex: 1, fontSize: 16, fontWeight: '600', color: Colors.textPrimary, marginLeft: 12 },
+  flag: { fontSize: 20, marginRight: 8 },
+  prefix: { fontSize: 16, fontWeight: '700', color: Colors.textPrimary, marginRight: 8 },
+  errorText: { color: Colors.error, fontSize: 12, marginTop: 4, fontWeight: '500' },
+
+  forgotBtn: { alignSelf: 'flex-end', marginBottom: 24 },
+  forgotText: { fontSize: 14, fontWeight: '700' },
+  
+  terms: {
+    textAlign: 'center', color: Colors.textSecondary,
+    fontSize: 12, lineHeight: 18, marginTop: 24, paddingHorizontal: 20,
+  },
+});

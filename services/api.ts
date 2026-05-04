@@ -5,8 +5,10 @@ import { useAuthStore } from '@/store/authStore';
 // ---------------------------------------------------------------------------
 // Base URL — update to your actual backend URL
 // ---------------------------------------------------------------------------
+import { Platform } from 'react-native';
+
 export const BASE_URL = __DEV__
-  ? 'http://10.0.2.2:3000/api/v1'   // Android emulator localhost
+  ? (Platform.OS === 'web' ? 'http://localhost:3000/api/v1' : 'http://10.0.2.2:3000/api/v1')
   : 'https://api.digitalkisan.pk/v1';
 
 const api = axios.create({
@@ -15,7 +17,7 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
     Accept: 'application/json',
-  },
+  }
 });
 
 // ---------------------------------------------------------------------------

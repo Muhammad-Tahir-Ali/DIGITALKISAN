@@ -1,118 +1,22 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity,
-  StyleSheet, Platform,
+  StyleSheet, Platform, ActivityIndicator, RefreshControl,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { Colors } from '@/constants/colors';
-import { MOCK_ORDERS } from '@/constants/mockData';
+import orderService, { Order, OrderStatus as ApiOrderStatus } from '@/services/order.service';
 
 type OrderStatus = 'Active' | 'Delivered' | 'Cancelled';
 
 const STATUS_CONFIG = {
-  Active:    { text: '#92400E', bg: '#FEF3C7', dot: '#F59E0B', icon: 'clock'      },
-  Delivered: { text: '#065F46', bg: '#D1FAE5', dot: '#10B981', icon: 'check-circle'},
-  Cancelled: { text: '#991B1B', bg: '#FEE2E2', dot: '#EF4444', icon: 'x-circle'   },
+  Active: { text: '#92400E', bg: '#FEF3C7', dot: '#F59E0B', icon: 'clock' },
+  Delivered: { text: '#065F46', bg: '#D1FAE5', dot: '#10B981', icon: 'check-circle' },
+  Cancelled: { text: '#991B1B', bg: '#FEE2E2', dot: '#EF4444', icon: 'x-circle' },
 };
 
-function OrderCard({ item, onPress }: { item: typeof MOCK_ORDERS[0]; onPress: () => void }) {
-  const s = STATUS_CONFIG[item.status as OrderStatus] || STATUS_CONFIG.Active;
-  const hasEscrow = item.escrowStatus && item.escrowStatus !== 'N/A' && item.escrowStatus !== 'Refunded';
 
-  return (
-    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.88}>
-      {/* Top Row */}
-      <View style={styles.cardTop}>
-        <View>
-          <Text style={styles.orderId}>{item.id}</Text>
-          <Text style={styles.orderDate}>{item.date}</Text>
-        </View>
-        <View style={[styles.statusChip, { backgroundColor: s.bg }]}>
-          <View style={[styles.statusDot, { backgroundColor: s.dot }]} />
-          <Text style={[styles.statusText, { color: s.text }]}>{item.status}</Text>
-        </View>
-      </View>
-
-      {/* Farm Info */}
-      <View style={styles.farmRow}>
-        <View style={styles.farmAvatar}>
-          <Text style={{ fontSize: 16 }}>🌾</Text>
-        </View>
-        <View style={styles.farmInfo}>
-          <Text style={styles.farmName}>{item.farmName}</Text>
-          <Text style={styles.farmerName}>
-            <Feather name="user" size={10} color={Colors.textSecondary} /> {item.farmerName}
-          </Text>
-        </View>
-        <Text style={styles.orderTotal}>₨{item.total.toLocaleString()}</Text>
-      </View>
-
-      {/* Items Preview */}
-      <View style={styles.itemsRow}>
-        {item.items.slice(0, 2).map(prod => (
-          <View key={prod.id} style={styles.itemChip}>
-            <Text style={styles.itemEmoji}>{prod.emoji}</Text>
-            <Text style={styles.itemName}>{prod.name}</Text>
-          </View>
-        ))}
-        {item.items.length > 2 && (
-          <View style={styles.moreChip}>
-            <Text style={styles.moreText}>+{item.items.length - 2}</Text>
-          </View>
-        )}
-      </View>
-
-      {/* Escrow Badge */}
-      {hasEscrow && (
-        <View style={styles.escrowBanner}>
-          <Feather name="shield" size={12} color="#2563EB" />
-          <Text style={styles.escrowText}>{item.escrowStatus}</Text>
-        </View>
-      )}
-
-      {/* Progress Bar for Active */}
-      {item.status === 'Active' && (
-        <View style={styles.progressSection}>
-          <View style={styles.progressHeader}>
-            <Text style={styles.progressLabel}>Delivery Progress</Text>
-            <Text style={styles.progressPct}>{item.deliveryProgress}%</Text>
-          </View>
-          <View style={styles.progressTrack}>
-            <View style={[styles.progressFill, { width: `${item.deliveryProgress}%` as any }]} />
-          </View>
-        </View>
-      )}
-
-      {/* Action Row */}
-      <View style={styles.actionRow}>
-        <TouchableOpacity style={styles.actionBtn}>
-          <Feather name="refresh-cw" size={12} color={Colors.textSecondary} />
-          <Text style={styles.actionBtnText}>Reorder</Text>
-        </TouchableOpacity>
-        {item.status === 'Active' && (
-          <TouchableOpacity
-            style={[styles.actionBtn, styles.trackBtn]}
-            onPress={() => {}}
-          >
-            <Feather name="map-pin" size={12} color={Colors.primary} />
-            <Text style={[styles.actionBtnText, { color: Colors.primary }]}>Track</Text>
-          </TouchableOpacity>
-        )}
-        {item.status === 'Delivered' && (
-          <TouchableOpacity style={[styles.actionBtn, styles.rateBtn]}>
-            <Text style={styles.rateStar}>⭐</Text>
-            <Text style={[styles.actionBtnText, { color: '#92400E' }]}>Rate</Text>
-          </TouchableOpacity>
-        )}
-        <TouchableOpacity style={styles.detailBtn} onPress={onPress}>
-          <Text style={styles.detailBtnText}>View Details</Text>
-          <Feather name="arrow-right" size={13} color="#fff" />
-        </TouchableOpacity>
-      </View>
-    </TouchableOpacity>
-  );
-}
 
 function EmptyOrders({ tab }: { tab: string }) {
   const icons = { Active: '📦', Delivered: '✅', Cancelled: '❌' };
@@ -133,17 +37,45 @@ function EmptyOrders({ tab }: { tab: string }) {
   );
 }
 
+// Map backend status → UI tab
+const toUiStatus = (status: ApiOrderStatus): OrderStatus => {
+  if (status === 'delivered') return 'Delivered';
+  if (status === 'cancelled') return 'Cancelled';
+  return 'Active'; // pending, paid, bidding, in_transit, disputed
+};
+
 export default function BuyerOrdersScreen() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<OrderStatus>('Active');
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchOrders = useCallback(async (isRefresh = false) => {
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
+    setError(null);
+    try {
+      const data = await orderService.getMyOrders();
+      setOrders(data);
+    } catch (e: any) {
+      setError(e?.response?.data?.message ?? 'Failed to load orders');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchOrders(); }, [fetchOrders]);
 
   const counts = {
-    Active: MOCK_ORDERS.filter(o => o.status === 'Active').length,
-    Delivered: MOCK_ORDERS.filter(o => o.status === 'Delivered').length,
-    Cancelled: MOCK_ORDERS.filter(o => o.status === 'Cancelled').length,
+    Active: orders.filter(o => toUiStatus(o.status) === 'Active').length,
+    Delivered: orders.filter(o => toUiStatus(o.status) === 'Delivered').length,
+    Cancelled: orders.filter(o => toUiStatus(o.status) === 'Cancelled').length,
   };
 
-  const filtered = MOCK_ORDERS.filter(o => o.status === activeTab);
+  const filtered = orders.filter(o => toUiStatus(o.status) === activeTab);
 
   return (
     <View style={styles.root}>
@@ -181,20 +113,67 @@ export default function BuyerOrdersScreen() {
         ))}
       </View>
 
+      {/* Loading */}
+      {loading && (
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+        </View>
+      )}
+
+      {/* Error */}
+      {!loading && error && (
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <Feather name="wifi-off" size={32} color={Colors.textSecondary} />
+          <Text style={{ marginTop: 12, fontSize: 15, fontWeight: '700', color: Colors.textSecondary }}>{error}</Text>
+          <TouchableOpacity onPress={() => fetchOrders()} style={{ marginTop: 16, backgroundColor: Colors.primary, paddingHorizontal: 24, paddingVertical: 10, borderRadius: 12 }}>
+            <Text style={{ color: '#fff', fontWeight: '800' }}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* List */}
-      <FlatList
-        data={filtered}
-        keyExtractor={item => item.id}
-        renderItem={({ item }) => (
-          <OrderCard
-            item={item}
-            onPress={() => router.push(`/(buyer)/orders/${item.id}` as any)}
-          />
-        )}
-        contentContainerStyle={styles.list}
-        showsVerticalScrollIndicator={false}
-        ListEmptyComponent={<EmptyOrders tab={activeTab} />}
-      />
+      {!loading && !error && (
+        <FlatList
+          data={filtered}
+          keyExtractor={item => item._id}
+          renderItem={({ item }) => (
+            <TouchableOpacity style={styles.card} onPress={() => router.push(`/(buyer)/orders/${item._id}` as any)} activeOpacity={0.88}>
+              <View style={styles.cardTop}>
+                <View>
+                  <Text style={styles.orderId}>Order #{item._id.slice(-8).toUpperCase()}</Text>
+                  <Text style={styles.orderDate}>{new Date(item.createdAt).toLocaleDateString('en-PK', { day: 'numeric', month: 'short', year: 'numeric' })}</Text>
+                </View>
+                <View style={[styles.statusChip, { backgroundColor: STATUS_CONFIG[toUiStatus(item.status)].bg }]}>
+                  <View style={[styles.statusDot, { backgroundColor: STATUS_CONFIG[toUiStatus(item.status)].dot }]} />
+                  <Text style={[styles.statusText, { color: STATUS_CONFIG[toUiStatus(item.status)].text }]}>{item.status.replace('_', ' ')}</Text>
+                </View>
+              </View>
+              <View style={styles.farmRow}>
+                <View style={styles.farmAvatar}><Text style={{ fontSize: 16 }}>🌾</Text></View>
+                <View style={styles.farmInfo}>
+                  <Text style={styles.farmName}>{item.product?.title ?? 'Product'}</Text>
+                  <Text style={styles.farmerName}><Feather name="user" size={10} color={Colors.textSecondary} /> {item.farmer?.name ?? 'Farmer'}</Text>
+                </View>
+                <Text style={styles.orderTotal}>₨{item.totalPrice.toLocaleString()}</Text>
+              </View>
+              <View style={styles.escrowBanner}>
+                <Feather name="shield" size={12} color="#2563EB" />
+                <Text style={styles.escrowText}>Escrow Protection Active · Qty: {item.quantity} units</Text>
+              </View>
+              <View style={styles.actionRow}>
+                <TouchableOpacity style={styles.detailBtn} onPress={() => router.push(`/(buyer)/orders/${item._id}` as any)}>
+                  <Text style={styles.detailBtnText}>View Details</Text>
+                  <Feather name="arrow-right" size={13} color="#fff" />
+                </TouchableOpacity>
+              </View>
+            </TouchableOpacity>
+          )}
+          contentContainerStyle={styles.list}
+          showsVerticalScrollIndicator={false}
+          ListEmptyComponent={<EmptyOrders tab={activeTab} />}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => fetchOrders(true)} colors={[Colors.primary]} />}
+        />
+      )}
     </View>
   );
 }

@@ -1,5 +1,8 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView, Platform, ToastAndroid, Alert, Image, KeyboardAvoidingView } from 'react-native';
+import { 
+  View, Text, TextInput, TouchableOpacity, ScrollView, Platform, 
+  ToastAndroid, Alert, Image, KeyboardAvoidingView, StyleSheet, Dimensions 
+} from 'react-native';
 import { useRouter } from 'expo-router';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -7,6 +10,11 @@ import * as z from 'zod';
 import { Feather } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { Colors } from '@/constants/colors';
+import { LinearGradient } from 'expo-linear-gradient';
+import aiService from '@/services/ai.service';
+import productService from '@/services/product.service';
+
+const { width } = Dimensions.get('window');
 
 const productSchema = z.object({
   name: z.string().min(2, 'Crop name is required'),
@@ -44,7 +52,7 @@ export default function AddProductScreen() {
     }
   };
 
-  const onSubmit = (data: ProductForm) => {
+  const onSubmit = async (data: ProductForm) => {
     if (!imageUri) {
       if (Platform.OS === 'android') ToastAndroid.show('Please upload a product photo.', ToastAndroid.SHORT);
       else Alert.alert('Error', 'Please upload a product photo.');
@@ -53,159 +61,281 @@ export default function AddProductScreen() {
 
     setIsSimulatingAI(true);
     
-    // Simulate AI grading and backend submission delay
-    setTimeout(() => {
+    try {
+      // 1. Analyze image with Gemini via our backend
+      const aiResult = await aiService.classifyCrop(imageUri);
+      
+      // If it's not a crop, warn the user and stop
+      if (aiResult.digit === '0') {
+        Alert.alert('Invalid Image', 'The AI detected this is not a crop. Please upload a valid crop photo.');
+        setIsSimulatingAI(false);
+        return;
+      }
+
+      // 2. Create the product via API
+      await productService.create({
+        title: data.name,
+        description: `AI Verified: ${aiResult.label}. Quality Grade: ${aiResult.grade}.`,
+        category: 'grains', // Hardcoded to grains for now, but real app might have a picker
+        pricePerUnit: parseFloat(data.price),
+        unit: data.unit,
+        availableQuantity: parseInt(data.quantity, 10),
+      });
+
+      Alert.alert(
+        'Listing Created! ✅', 
+        `AI graded your crop as ${aiResult.label} (${aiResult.grade}). It is now live on the marketplace.`, 
+        [{ text: 'Awesome', onPress: () => router.back() }]
+      );
+    } catch (e: any) {
+      const msg = e?.response?.data?.message ?? 'Failed to analyze or list product.';
+      Alert.alert('Error', msg);
+    } finally {
       setIsSimulatingAI(false);
-      Alert.alert('Listing Created!', 'Your crop has been analyzed by AI and listed successfully.', [
-        { text: 'Awesome', onPress: () => router.back() }
-      ]);
-    }, 1500);
+    }
   };
 
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} className="flex-1 bg-background">
-      <View className="px-6 pt-16 pb-4 bg-white border-b border-gray-100 flex-row items-center">
+    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.container}>
+      <View style={styles.header}>
         <TouchableOpacity 
-          className="w-10 h-10 items-center justify-center rounded-full bg-gray-50 mr-4"
+          style={styles.backBtn}
           onPress={() => router.back()}
         >
-          <Feather name="arrow-left" size={24} color={Colors.textPrimary} />
+          <Feather name="arrow-left" size={22} color={Colors.textPrimary} />
         </TouchableOpacity>
-        <Text className="text-2xl font-bold text-textPrimary">Add Product</Text>
+        <Text style={styles.headerTitle}>Add New Listing</Text>
       </View>
 
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 100, paddingTop: 20 }} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         
         {/* IMAGE UPLOAD UI */}
-        <View className="mb-6">
-          <Text className="text-lg font-bold text-textPrimary mb-2">Crop Photo</Text>
-          <Text className="text-textSecondary text-sm mb-4">Clear photos get better AI grading and attract buyers faster.</Text>
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>Crop Photography</Text>
+          <Text style={styles.sectionDesc}>High quality photos get 3x more buyer interest.</Text>
           
           <TouchableOpacity 
             onPress={pickImage}
-            className={`w-full h-48 rounded-2xl border-2 border-dashed items-center justify-center overflow-hidden ${imageUri ? 'border-primary bg-primary-50' : 'border-gray-300 bg-surface'}`}
+            activeOpacity={0.8}
+            style={[styles.imagePlate, imageUri ? styles.imagePlateActive : null]}
           >
             {imageUri ? (
               <>
-                 <Image source={{ uri: imageUri }} className="w-full h-full absolute"  />
-                 <View className="absolute inset-0 bg-black/30 items-center justify-center">
-                    <View className="bg-white/90 px-4 py-2 rounded-full flex-row items-center">
-                       <Feather name="camera" size={16} color={Colors.textPrimary} />
-                       <Text className="ml-2 font-bold text-textPrimary">Change Photo</Text>
+                 <Image source={{ uri: imageUri }} style={styles.fullImage}  />
+                 <View style={styles.imageOverlay}>
+                    <View style={styles.changeBadge}>
+                       <Feather name="camera" size={14} color={Colors.textPrimary} />
+                       <Text style={styles.changeText}>Update Photo</Text>
                     </View>
                  </View>
               </>
             ) : (
-              <View className="items-center">
-                <View className="w-14 h-14 bg-gray-100 rounded-full items-center justify-center mb-3">
-                   <Feather name="upload-cloud" size={28} color={Colors.textSecondary} />
+              <View style={styles.uploadPlaceholder}>
+                <View style={styles.uploadCircle}>
+                   <Feather name="upload" size={24} color={Colors.agri.sabz} />
                 </View>
-                <Text className="font-bold text-textPrimary text-lg">Tap to Upload Photo</Text>
-                <Text className="text-textSecondary mt-1">Supports JPG, PNG</Text>
+                <Text style={styles.uploadTitle}>Tap to Upload</Text>
+                <Text style={styles.uploadSubtitle}>JPG or PNG (Max 5MB)</Text>
               </View>
             )}
           </TouchableOpacity>
 
-          {/* AI Banner Context */}
-          <View className="mt-4 bg-purple-50 p-4 rounded-xl flex-row border border-purple-100 items-start">
-             <View className="bg-purple-100 p-2 rounded-full mr-3 mt-0.5">
-                <Feather name="cpu" size={20} color="#9333ea" />
+          <View style={styles.aiAlert}>
+             <LinearGradient
+               colors={['#F5F3FF', '#EDE9FE']}
+               style={[StyleSheet.absoluteFill, { borderRadius: 16 }]}
+             />
+             <View style={styles.aiIconWrap}>
+                <Feather name="cpu" size={18} color="#7C3AED" />
              </View>
-             <View className="flex-1">
-                <Text className="text-purple-900 font-bold mb-1 pt-1">Automated AI Quality Grading</Text>
-                <Text className="text-purple-700 text-xs">When you submit, our system will automatically grade your crop image as Premium, Standard, or Low.</Text>
-             </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.aiTitle}>AI Quality Analysis</Text>
+                <Text style={styles.aiDesc}>Upon upload, our AI will automatically grade your crop as Premium, Standard, or Fair.</Text>
+              </View>
           </View>
         </View>
 
         {/* DETAILS */}
-        <View className="mb-8">
-          <Text className="text-lg font-bold text-textPrimary mb-4">Product Details</Text>
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>Listing Details</Text>
 
-          <Controller control={control} name="name" render={({ field: { onChange, value } }) => (
-            <View className="mb-4">
-              <Text className="text-textSecondary font-medium mb-1">What are you selling?</Text>
-              <TextInput 
-                className="border border-gray-200 rounded-xl h-14 px-4 bg-white text-lg font-medium" 
-                placeholder="e.g. Basmati Rice, Wheat" 
-                onChangeText={onChange} 
-                value={value} 
-              />
-              {errors.name && <Text className="text-red-500 text-xs mt-1">{errors.name.message}</Text>}
-            </View>
-          )} />
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Crop Name</Text>
+            <Controller control={control} name="name" render={({ field: { onChange, value } }) => (
+              <View style={[styles.inputField, errors.name && styles.inputError]}>
+                <TextInput 
+                  style={styles.textInput}
+                  placeholder="e.g. Basmati Rice, Desi Wheat" 
+                  placeholderTextColor="#94A3B8"
+                  onChangeText={onChange} 
+                  value={value} 
+                />
+              </View>
+            )} />
+            {errors.name && <Text style={styles.errorText}>{errors.name.message}</Text>}
+          </View>
 
-          <View className="flex-row justify-between mb-4">
-             <View className="w-[48%]">
-                <Text className="text-textSecondary font-medium mb-1">Selling Unit</Text>
-                <View className="flex-row flex-wrap gap-2">
+          <View style={styles.row}>
+             <View style={{ flex: 1.2, marginRight: 12 }}>
+                <Text style={styles.label}>Unit</Text>
+                <View style={styles.unitGrid}>
                    {UNITS.map(u => (
                      <TouchableOpacity 
                        key={u} 
                        onPress={() => setValue('unit', u)} 
-                       className={`px-3 py-2 rounded-xl flex-1 items-center border ${selectedUnit === u ? 'bg-primary-50 border-primary' : 'bg-white border-gray-200'}`}
+                       style={[styles.unitBtn, selectedUnit === u ? styles.unitBtnActive : null]}
                      >
-                       <Text className={`font-bold ${selectedUnit === u ? 'text-primary' : 'text-textSecondary'}`}>{u}</Text>
+                       <Text style={[styles.unitBtnText, selectedUnit === u ? styles.unitBtnTextActive : null]}>{u}</Text>
                      </TouchableOpacity>
                    ))}
                 </View>
              </View>
 
-             <Controller control={control} name="price" render={({ field: { onChange, value } }) => (
-               <View className="w-[48%]">
-                 <Text className="text-textSecondary font-medium mb-1">Price per {selectedUnit}</Text>
-                 <View className="flex-row items-center border border-gray-200 rounded-xl h-14 px-4 bg-white">
-                    <Text className="text-lg font-bold text-textPrimary mr-2">₨</Text>
+             <View style={{ flex: 1 }}>
+               <Text style={styles.label}>Price / {selectedUnit}</Text>
+               <Controller control={control} name="price" render={({ field: { onChange, value } }) => (
+                 <View style={[styles.inputField, errors.price && styles.inputError]}>
+                    <Text style={styles.pricePrefix}>₨</Text>
                     <TextInput 
-                      className="flex-1 text-lg font-bold" 
+                      style={[styles.textInput, { fontWeight: '900' }]} 
                       placeholder="0" 
+                      placeholderTextColor="#94A3B8"
                       keyboardType="numeric" 
                       onChangeText={onChange} 
                       value={value} 
                     />
                  </View>
-                 {errors.price && <Text className="text-red-500 text-xs mt-1">{errors.price.message}</Text>}
-               </View>
-             )} />
+               )} />
+               {errors.price && <Text style={styles.errorText}>{errors.price.message}</Text>}
+             </View>
           </View>
 
-          <Controller control={control} name="quantity" render={({ field: { onChange, value } }) => (
-            <View className="mb-4">
-              <Text className="text-textSecondary font-medium mb-1">Available Quantity / Stock (in {selectedUnit})</Text>
-              <TextInput 
-                className="border border-gray-200 rounded-xl h-14 px-4 bg-white text-lg font-bold" 
-                placeholder="e.g. 100" 
-                keyboardType="numeric"
-                onChangeText={onChange} 
-                value={value} 
-              />
-              {errors.quantity && <Text className="text-red-500 text-xs mt-1">{errors.quantity.message}</Text>}
-            </View>
-          )} />
+          <View style={[styles.inputGroup, { marginTop: 12 }]}>
+            <Text style={styles.label}>Stock Quantity (in {selectedUnit})</Text>
+            <Controller control={control} name="quantity" render={({ field: { onChange, value } }) => (
+              <View style={[styles.inputField, errors.quantity && styles.inputError]}>
+                <TextInput 
+                  style={[styles.textInput, { fontWeight: '700' }]} 
+                  placeholder="e.g. 500" 
+                  placeholderTextColor="#94A3B8"
+                  keyboardType="numeric"
+                  onChangeText={onChange} 
+                  value={value} 
+                />
+              </View>
+            )} />
+            {errors.quantity && <Text style={styles.errorText}>{errors.quantity.message}</Text>}
+          </View>
         </View>
 
+        <View style={{ height: 40 }} />
       </ScrollView>
 
       {/* FINAL ACTION */}
-      <View className="absolute bottom-0 left-0 right-0 p-6 bg-white border-t border-gray-100 shadow-[0_-10px_15px_-3px_rgba(0,0,0,0.1)]">
+      <View style={styles.footer}>
          <TouchableOpacity 
             onPress={handleSubmit(onSubmit)}
             disabled={isSimulatingAI}
-            className={`h-16 rounded-2xl flex-row items-center justify-center w-full ${isSimulatingAI ? 'bg-primary-300' : 'bg-primary'}`}
+            activeOpacity={0.8}
+            style={[styles.submitBtn, isSimulatingAI && { opacity: 0.7 }]}
          >
             {isSimulatingAI ? (
-               <>
-                  <Feather name="loader" size={24} color="#fff" className="animate-spin mr-2" />
-                  <Text className="text-white font-bold text-xl ml-2">Analyzing Image & Posting...</Text>
-               </>
+               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Text style={styles.submitBtnText}>Analyzing & Publishing...</Text>
+               </View>
             ) : (
-               <>
-                  <Feather name="check-circle" size={24} color="#fff" />
-                  <Text className="text-white font-bold text-xl ml-2">Publish Listing</Text>
-               </>
+               <Text style={styles.submitBtnText}>Confirm Listing</Text>
             )}
          </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
   );
 }
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: '#F8FAFB' },
+  header: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingTop: 60, paddingBottom: 20, paddingHorizontal: 24,
+    backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#F1F5F9',
+  },
+  backBtn: {
+    width: 40, height: 40, borderRadius: 12, backgroundColor: '#F1F5F9',
+    alignItems: 'center', justifyContent: 'center', marginRight: 16,
+  },
+  headerTitle: { fontSize: 20, fontWeight: '900', color: Colors.textPrimary },
+  scrollContent: { paddingHorizontal: 24, paddingTop: 24, paddingBottom: 120 },
+  
+  section: { marginBottom: 32 },
+  sectionLabel: { fontSize: 18, fontWeight: '900', color: '#1E293B', marginBottom: 4 },
+  sectionDesc: { fontSize: 13, color: '#64748B', fontWeight: '500', marginBottom: 20 },
+
+  imagePlate: {
+    height: 220, borderRadius: 24, borderWidth: 2, borderStyle: 'dashed',
+    borderColor: '#E2E8F0', backgroundColor: '#F1F5F9',
+    overflow: 'hidden', justifyContent: 'center', alignItems: 'center',
+  },
+  imagePlateActive: { borderStyle: 'solid', borderColor: Colors.agri.sabz, backgroundColor: '#fff' },
+  uploadPlaceholder: { alignItems: 'center' },
+  uploadCircle: {
+    width: 56, height: 56, borderRadius: 28, backgroundColor: '#fff',
+    alignItems: 'center', justifyContent: 'center', marginBottom: 12,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05, shadowRadius: 5,
+  },
+  uploadTitle: { fontSize: 16, fontWeight: '800', color: '#1E293B' },
+  uploadSubtitle: { fontSize: 12, color: '#94A3B8', fontWeight: '500', marginTop: 4 },
+  fullImage: { width: '100%', height: '100%' },
+  imageOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.2)', alignItems: 'center', justifyContent: 'center' },
+  changeBadge: {
+    flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.9)',
+    paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, gap: 6,
+  },
+  changeText: { fontSize: 12, fontWeight: '800', color: Colors.textPrimary },
+
+  aiAlert: {
+    flexDirection: 'row', padding: 16, borderRadius: 16, marginTop: 16,
+    alignItems: 'center', gap: 12, overflow: 'hidden',
+  },
+  aiIconWrap: {
+    width: 36, height: 36, borderRadius: 11, backgroundColor: '#fff',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  aiTitle: { fontSize: 14, fontWeight: '800', color: '#5B21B6' },
+  aiDesc: { fontSize: 11, color: '#7C3AED', fontWeight: '500', marginTop: 2, lineHeight: 16 },
+
+  inputGroup: { marginBottom: 20 },
+  label: { fontSize: 13, fontWeight: '800', color: Colors.textPrimary, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
+  inputField: {
+    flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff',
+    borderRadius: 16, height: 56, borderWidth: 1, borderColor: '#E2E8F0',
+    paddingHorizontal: 16,
+  },
+  inputError: { borderColor: Colors.error },
+  textInput: { flex: 1, fontSize: 16, fontWeight: '600', color: Colors.textPrimary },
+  pricePrefix: { fontSize: 18, fontWeight: '900', color: Colors.textPrimary, marginRight: 8 },
+  errorText: { color: Colors.error, fontSize: 11, marginTop: 4, fontWeight: '600' },
+  
+  row: { flexDirection: 'row', alignItems: 'flex-start' },
+  unitGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  unitBtn: {
+    paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10,
+    backgroundColor: '#fff', borderWidth: 1, borderColor: '#E2E8F0',
+  },
+  unitBtnActive: { backgroundColor: Colors.agri.sabz, borderColor: Colors.agri.sabz },
+  unitBtnText: { fontSize: 12, fontWeight: '700', color: '#64748B' },
+  unitBtnTextActive: { color: '#fff' },
+
+  footer: {
+    position: 'absolute', bottom: 0, left: 0, right: 0,
+    backgroundColor: '#fff', padding: 24, borderTopWidth: 1, borderTopColor: '#F1F5F9',
+    paddingBottom: Platform.OS === 'ios' ? 40 : 24,
+  },
+  submitBtn: {
+    backgroundColor: Colors.agri.sabz, height: 60, borderRadius: 18,
+    alignItems: 'center', justifyContent: 'center', shadowColor: Colors.agri.sabz,
+    shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 4,
+  },
+  submitBtnText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+});
+

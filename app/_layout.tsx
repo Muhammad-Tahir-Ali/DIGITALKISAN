@@ -1,5 +1,10 @@
 import '../global.css';
 import { useEffect } from 'react';
+import { LogBox } from 'react-native';
+
+LogBox.ignoreLogs([
+  'Animated: `useNativeDriver` is not supported because the native animated module is missing',
+]);
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';

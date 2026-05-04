@@ -4,12 +4,14 @@ import { Menu, IconButton } from 'react-native-paper';
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/hooks/useAuth';
+import { useAuthStore } from '@/store/authStore';
 import { Colors } from '@/constants/colors';
 
 export const TopDotsMenu = () => {
   const [visible, setVisible] = useState(false);
   const router = useRouter();
   const { logout } = useAuth();
+  const setRole = useAuthStore((s) => s.setRole);
 
   const openMenu = () => setVisible(true);
   const closeMenu = () => setVisible(false);
@@ -17,6 +19,12 @@ export const TopDotsMenu = () => {
   const handleOrders = () => {
     closeMenu();
     router.push('/(buyer)/orders');
+  };
+
+  const handleSwitchToFarmer = () => {
+    closeMenu();
+    setRole('farmer');
+    router.replace('/(farmer)/dashboard');
   };
 
   const handleLogout = () => {
@@ -58,6 +66,12 @@ export const TopDotsMenu = () => {
         onPress={() => { closeMenu(); router.push('/(buyer)/profile'); }} 
         title="My Profile" 
         leadingIcon={() => <Feather name="user" size={18} color={Colors.textPrimary} />}
+      />
+      <Menu.Item 
+        onPress={handleSwitchToFarmer} 
+        title="Switch to Farmer" 
+        titleStyle={{ color: Colors.primary, fontWeight: '700' }}
+        leadingIcon={() => <Feather name="refresh-cw" size={18} color={Colors.primary} />}
       />
       <Menu.Item 
         onPress={handleLogout} 

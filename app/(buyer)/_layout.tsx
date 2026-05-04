@@ -1,9 +1,16 @@
-import { Tabs } from 'expo-router';
+import { Tabs, Redirect } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { Colors } from '@/constants/colors';
 import { TopDotsMenu } from '@/components/navigation/TopDotsMenu';
+import { useAuthStore } from '@/store/authStore';
 
 export default function BuyerLayout() {
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+
+  if (!isAuthenticated) {
+    return <Redirect href="/" />;
+  }
+
   return (
     <Tabs
       screenOptions={{
