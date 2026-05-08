@@ -57,8 +57,8 @@ export default function ProductDetailScreen() {
       price:       product.pricePerUnit,
       quantity:    qty,
       unit:        product.unit,
-      farmerId:    product.farmer._id,
-      farmerName:  product.farmer.name,
+      farmerId:    product.farmer?._id || '',
+      farmerName:  product.farmer?.name || 'Farmer',
       maxStock:    product.availableQuantity,
     });
     Animated.sequence([
@@ -107,8 +107,8 @@ export default function ProductDetailScreen() {
     
   const totalPrice = product.pricePerUnit * qty;
   const emoji = '🌾'; // Fallback
-  const farmerRating = product.farmer.rating || 5.0;
-  const farmerCity = product.farmer.location?.address || 'Pakistan';
+  const farmerRating = product.farmer?.rating || 5.0;
+  const farmerCity = product.farmer?.location?.address || 'Pakistan';
   const aiScore = 95; 
   const quality = 'Grade A' as any;
 
@@ -223,7 +223,7 @@ export default function ProductDetailScreen() {
               <Text style={{ fontSize: 22 }}>👨‍🌾</Text>
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.farmerName}>{product.farmer.name}</Text>
+              <Text style={styles.farmerName}>{product.farmer?.name || 'Farmer'}</Text>
               <Stars rating={farmerRating} count={product.ratingsQuantity || 0} />
               <Text style={styles.farmerLocation}>
                 <Feather name="map-pin" size={10} color={Colors.textSecondary} />
@@ -233,7 +233,7 @@ export default function ProductDetailScreen() {
             <TouchableOpacity 
               style={styles.viewProfileBtn}
               onPress={() => Alert.alert(
-                product.farmer.name,
+                product.farmer?.name || 'Farmer',
                 `📍 ${farmerCity}\n⭐ ${farmerRating.toFixed(1)} rating`,
                 [{ text: 'Close' }]
               )}
