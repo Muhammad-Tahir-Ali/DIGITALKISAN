@@ -95,15 +95,7 @@ const VARIANT_MAP: Record<ButtonVariant, VariantTokens> = {
   },
 };
 
-const SIZE_EXTRA: Record<string, any> = {
-  xl: {
-    height: 58,
-    paddingHorizontal: 28,
-    fontSize: 17,
-    iconSize: 22,
-    borderRadius: 18,
-  },
-};
+
 
 // ---------------------------------------------------------------------------
 // Component
@@ -122,9 +114,13 @@ export function Button({
   ...rest
 }: ButtonProps) {
   const tokens = VARIANT_MAP[variant];
-  const sizeTokens = (size === 'xl' ? SIZE_EXTRA.xl : ComponentSize[size as 'sm' | 'md' | 'lg']);
+  const sizeTokens = ComponentSize[size];
   const isDisabled = disabled || loading;
+
   const scaleAnim = useRef(new Animated.Value(1)).current;
+  
+  // Separate layout styles for the wrapper vs the button itself
+  const { flex, margin, marginTop, marginBottom, marginLeft, marginRight, marginHorizontal, marginVertical, ...buttonStyle } = StyleSheet.flatten(style || {});
 
   const handlePressIn = () => {
     Animated.spring(scaleAnim, { toValue: 0.97, useNativeDriver: true, speed: 30 }).start();
@@ -134,7 +130,12 @@ export function Button({
   };
 
   return (
-    <Animated.View style={{ transform: [{ scale: scaleAnim }], alignSelf: fullWidth ? 'stretch' : 'flex-start' }}>
+    <Animated.View style={{ 
+      transform: [{ scale: scaleAnim }], 
+      alignSelf: fullWidth ? 'stretch' : 'flex-start',
+      flex: (flex as any),
+      margin, marginTop, marginBottom, marginLeft, marginRight, marginHorizontal, marginVertical
+    }}>
       <TouchableOpacity
         activeOpacity={0.88}
         disabled={isDisabled}
@@ -154,8 +155,9 @@ export function Button({
             ...(tokens.shadow && !isDisabled ? tokens.shadow : {}),
           },
           fullWidth && styles.fullWidth,
-          style,
+          buttonStyle,
         ]}
+
         {...rest}
       >
       {/* Left icon */}

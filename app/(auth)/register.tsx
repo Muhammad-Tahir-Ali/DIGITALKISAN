@@ -220,8 +220,9 @@ export default function RegisterScreen() {
   return (
     <KeyboardAvoidingView
       style={{ flex: 1, backgroundColor: '#F8FAFB' }}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
+
       {/* ── HEADER & PROGRESS ── */}
       <View style={regStyles.header}>
         <View style={regStyles.headerTop}>
@@ -513,23 +514,28 @@ export default function RegisterScreen() {
       </ScrollView>
 
       {/* Footer Buttons */}
-      <View className="px-6 py-4 bg-white border-t border-gray-100 flex-row gap-x-4">
+      <View className="px-6 py-6 bg-white border-t border-gray-100 flex-row gap-x-4">
         <Button
           variant="outline"
           label={step === 1 ? "Cancel" : "Back"}
           onPress={handleBack}
           style={{ flex: 1 }}
-          size="lg"
+          size="xl"
+          fullWidth
         />
         <Button
           variant="primary"
           label={step === totalSteps ? "Register" : "Next"}
           onPress={step === totalSteps ? handleSubmit(onSubmit) : handleNext}
           loading={isSubmitting}
-          style={{ flex: 1 }}
-          size="lg"
+          style={{ flex: 2 }}
+          size="xl"
+          fullWidth
+          rightIcon={<Feather name={step === totalSteps ? "check" : "arrow-right"} size={20} color="#fff" />}
         />
       </View>
+
+
 
       {renderDropdownModal()}
     </KeyboardAvoidingView>

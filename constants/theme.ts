@@ -184,13 +184,21 @@ export const ComponentSize = {
     borderRadius: Radius.lg,
   },
   lg: {
-    height: 54,
+    height: 56,
     paddingHorizontal: 24,
     fontSize: FontSize.md,
     iconSize: 20,
     borderRadius: Radius.xl,
   },
+  xl: {
+    height: 64,
+    paddingHorizontal: 32,
+    fontSize: FontSize.md,
+    iconSize: 24,
+    borderRadius: Radius['2xl'],
+  },
 } as const;
+
 
 // ---------------------------------------------------------------------------
 // React Native Paper Theme Override

@@ -10,7 +10,9 @@ import * as z from 'zod';
 import { Feather } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { Colors } from '@/constants/colors';
+import { Button } from '@/components/ui';
 import { LinearGradient } from 'expo-linear-gradient';
+
 import aiService from '@/services/ai.service';
 import productService from '@/services/product.service';
 
@@ -396,22 +398,16 @@ export default function AddProductScreen() {
 
       {/* FINAL ACTION */}
       <View style={styles.footer}>
-         <TouchableOpacity 
-            onPress={handleSubmit(onSubmit, (errs) => {
-              Alert.alert('Incomplete Form', 'Please fill out all required fields correctly.');
-            })}
-            disabled={isSimulatingAI}
-            activeOpacity={0.8}
-            style={[styles.submitBtn, isSimulatingAI && { opacity: 0.7 }]}
-         >
-            {isSimulatingAI ? (
-               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <Text style={styles.submitBtnText}>Analyzing & Publishing...</Text>
-               </View>
-            ) : (
-               <Text style={styles.submitBtnText}>Confirm Listing</Text>
-            )}
-         </TouchableOpacity>
+         <Button 
+            label={isSimulatingAI ? 'Analyzing & Publishing...' : 'Confirm Listing'}
+            onPress={handleSubmit(onSubmit)}
+            loading={isSimulatingAI}
+            size="xl"
+            fullWidth
+            rightIcon={!isSimulatingAI && <Feather name="plus-circle" size={20} color="#fff" />}
+            style={{ backgroundColor: Colors.agri.sabz }}
+         />
+
       </View>
     </KeyboardAvoidingView>
   );
