@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, FlatList, Switch, ActivityIndicator, RefreshControl, Alert } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, FlatList, Switch, ActivityIndicator, RefreshControl, Alert, Image, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { Colors } from '@/constants/colors';
@@ -22,7 +22,7 @@ export default function MyProductsScreen() {
     else setLoading(true);
     setError(null);
     try {
-      const data = await productService.getAll();
+      const data = await productService.getMyProducts();
       setProducts(data);
     } catch (e: any) {
       setError(e?.response?.data?.message ?? 'Failed to load products');
@@ -35,19 +35,25 @@ export default function MyProductsScreen() {
   useEffect(() => { fetchProducts(); }, [fetchProducts]);
 
   const handleDelete = async (id: string) => {
-    Alert.alert('Delete Product', 'Are you sure? This will hide the product.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete', style: 'destructive', onPress: async () => {
-          try {
-            await productService.delete(id);
-            setProducts(prev => prev.filter(p => p._id !== id));
-          } catch {
-            Alert.alert('Error', 'Could not delete product. Please try again.');
-          }
-        }
+    const doDelete = async () => {
+      try {
+        await productService.delete(id);
+        setProducts(prev => prev.filter(p => p._id !== id));
+      } catch {
+        Alert.alert('Error', 'Could not delete product. Please try again.');
       }
-    ]);
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm('Are you sure? This will hide the product.')) {
+        doDelete();
+      }
+    } else {
+      Alert.alert('Delete Product', 'Are you sure? This will hide the product.', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: doDelete }
+      ]);
+    }
   };
 
   const getFilteredProducts = () => {
@@ -68,8 +74,12 @@ export default function MyProductsScreen() {
     return (
       <View className={`bg-white rounded-2xl mb-4 shadow-sm border ${item.status === 'hidden' ? 'border-gray-200 bg-gray-50' : 'border-gray-100'} p-4`}>
         <View className="flex-row">
-          <View className={`w-20 h-20 rounded-xl items-center justify-center mr-4 ${item.status === 'hidden' ? 'bg-gray-200' : 'bg-green-50'}`}>
-            <Text className="text-4xl">🌾</Text>
+          <View className={`w-20 h-20 rounded-xl items-center justify-center mr-4 overflow-hidden ${item.status === 'hidden' ? 'bg-gray-200' : 'bg-green-50'}`}>
+            {item.images && item.images.length > 0 ? (
+              <Image source={{ uri: item.images[0] }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+            ) : (
+              <Text className="text-4xl">🌾</Text>
+            )}
           </View>
           <View className="flex-1 justify-between py-0.5">
             <View className="flex-row justify-between items-start">
@@ -77,6 +87,16 @@ export default function MyProductsScreen() {
                 <Text className={`font-bold text-base ${item.status === 'hidden' ? 'text-gray-400' : 'text-textPrimary'}`}>{item.title}</Text>
                 <Text className="text-primary font-bold text-sm mt-0.5">₨{item.pricePerUnit}<Text className="text-[10px] text-textSecondary font-medium">/{item.unit}</Text></Text>
               </View>
+              {item.status === 'pending_ai' && (
+                <View className="bg-yellow-100 px-2 py-1 rounded">
+                  <Text className="text-[10px] font-bold text-yellow-700">Pending AI ⏳</Text>
+                </View>
+              )}
+              {item.status === 'rejected' && (
+                <View className="bg-red-100 px-2 py-1 rounded">
+                  <Text className="text-[10px] font-bold text-red-700">Rejected ❌</Text>
+                </View>
+              )}
             </View>
             <View className="flex-row items-center mt-2">
               <View className={`px-2 py-0.5 rounded mr-2 ${isOut ? 'bg-error-light' : isLow ? 'bg-warning-light' : 'bg-gray-100'}`}>
@@ -96,7 +116,7 @@ export default function MyProductsScreen() {
             <Text className="text-[10px] text-textSecondary ml-1">{item.rating} ({item.ratingsQuantity} reviews)</Text>
           </View>
           <View className="flex-row space-x-1 border border-gray-100 rounded-lg overflow-hidden bg-gray-50">
-            <TouchableOpacity className="p-2 border-r border-gray-100 bg-white" onPress={() => router.push('/(farmer)/products/add' as any)}>
+            <TouchableOpacity className="p-2 border-r border-gray-100 bg-white" onPress={() => router.push({ pathname: '/(farmer)/products/add' as any, params: { productId: item._id } })}>
               <Feather name="edit-2" size={14} color={Colors.primary} />
             </TouchableOpacity>
             <TouchableOpacity className="p-2 bg-white" onPress={() => handleDelete(item._id)}>

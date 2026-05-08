@@ -68,6 +68,25 @@ const orderService = {
     const { data } = await api.patch(`/orders/${orderId}/status`, { status });
     return data.data.order;
   },
+
+  /**
+   * Get orders available for bidding (Logistics only)
+   * Returns paid/bidding orders with no logistics provider assigned
+   */
+  getAvailableOrders: async (): Promise<Order[]> => {
+    const { data } = await api.get('/orders/available');
+    return data.data.orders;
+  },
+
+  /**
+   * Cancel an order (Buyer only)
+   * Only works if order status is 'pending' or 'paid'
+   * Restores product inventory automatically
+   */
+  cancel: async (orderId: string): Promise<Order> => {
+    const { data } = await api.patch(`/orders/${orderId}/cancel`);
+    return data.data.order;
+  },
 };
 
 export default orderService;

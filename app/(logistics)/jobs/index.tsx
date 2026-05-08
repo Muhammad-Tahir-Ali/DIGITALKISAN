@@ -200,11 +200,8 @@ export default function LogisticsJobs() {
     else setLoading(true);
     setError(null);
     try {
-      const all = await orderService.getMyOrders();
-      // Logistics sees orders in 'paid' or 'bidding' status as available jobs
-      const available = all.filter(o =>
-        o.status === 'paid' || o.status === 'bidding' || o.status === 'pending'
-      );
+      // Use the dedicated /available endpoint — getMyOrders() returns empty for logistics users
+      const available = await orderService.getAvailableOrders();
       setJobs(available);
     } catch (e: any) {
       setError(e?.response?.data?.message ?? 'Failed to load jobs.');

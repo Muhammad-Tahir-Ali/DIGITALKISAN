@@ -7,7 +7,9 @@ import { Colors } from '@/constants/colors';
 import { useAuthStore } from '@/store/authStore';
 import userService, { DashboardStats } from '@/services/user.service';
 import orderService, { Order } from '@/services/order.service';
+import notificationService, { Notification } from '@/services/notification.service';
 import { SkeletonLoader, StatusBadge } from '@/components/ui';
+import { Alert } from 'react-native';
 
 const { width } = Dimensions.get('window');
 
@@ -18,17 +20,20 @@ export default function FarmerDashboard() {
 
   const [stats, setStats] = React.useState<DashboardStats | null>(null);
   const [orders, setOrders] = React.useState<Order[]>([]);
+  const [notifications, setNotifications] = React.useState<Notification[]>([]);
   const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
     const fetchData = async () => {
       try {
-        const [statsData, ordersData] = await Promise.all([
+        const [statsData, ordersData, notifsData] = await Promise.all([
           userService.getDashboardStats(),
           orderService.getMyOrders(),
+          notificationService.getMyNotifications(),
         ]);
         setStats(statsData);
         setOrders(ordersData);
+        setNotifications(notifsData);
       } catch (error) {
         console.error('Failed to load dashboard data:', error);
       } finally {
@@ -36,7 +41,40 @@ export default function FarmerDashboard() {
       }
     };
     fetchData();
+
+    // Poll notifications every 10 seconds to catch async AI updates
+    const interval = setInterval(async () => {
+      try {
+        const notifs = await notificationService.getMyNotifications();
+        setNotifications(notifs);
+      } catch (e) {}
+    }, 10000);
+
+    return () => clearInterval(interval);
   }, []);
+
+  const unreadNotifs = notifications.filter(n => !n.isRead);
+
+  const handleNotificationsClick = async () => {
+    if (notifications.length === 0) {
+      Alert.alert('Notifications', 'You have no notifications.');
+      return;
+    }
+
+    const latest = notifications[0]; // Just showing the latest for simplicity
+    Alert.alert(
+      latest.title,
+      latest.message,
+      [
+        { text: 'Close', onPress: async () => {
+          if (unreadNotifs.length > 0) {
+            await notificationService.markAllAsRead();
+            setNotifications(notifications.map(n => ({ ...n, isRead: true })));
+          }
+        }}
+      ]
+    );
+  };
 
   const pendingOrders = orders.filter((o) => o.status !== 'delivered' && o.status !== 'cancelled');
 
@@ -62,18 +100,19 @@ export default function FarmerDashboard() {
 
         <View style={styles.headerTop}>
           <TouchableOpacity onPress={handleSwitchToBuyer} style={styles.switchBtn}>
-            <Text style={styles.switchText}>Switch to Buyer 🔄</Text>
+            <Feather name="repeat" size={12} color="#fff" style={{ marginRight: 4 }} />
+            <Text style={styles.switchText}>Switch to Buyer</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.iconBtn}>
+          <TouchableOpacity style={styles.iconBtn} onPress={handleNotificationsClick}>
             <Feather name="bell" size={20} color="#fff" />
-            <View style={styles.notifDot} />
+            {unreadNotifs.length > 0 && <View style={styles.notifDot} />}
           </TouchableOpacity>
         </View>
 
         <View style={styles.userInfo}>
           <View>
             <Text style={styles.greeting}>Salaam,</Text>
-            <Text style={styles.name}>{user?.name ?? 'Farmer'} 👋</Text>
+            <Text style={styles.name}>{user?.name ?? 'Farmer'}</Text>
           </View>
           {user?.isVerified && (
             <View style={styles.verifiedBadge}>
@@ -123,10 +162,10 @@ export default function FarmerDashboard() {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Quick Actions</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.actionRow}>
-          <QuickAction icon="plus-circle" label="Add Product" color={Colors.agri.sabz} onPress={() => router.push('/(farmer)/products/add' as any)} />
-          <QuickAction icon="grid" label="My Products" color="#6366F1" onPress={() => router.push('/(farmer)/products' as any)} />
-          <QuickAction icon="shopping-bag" label="Orders" color="#EC4899" onPress={() => router.push('/(farmer)/orders' as any)} />
-          <QuickAction icon="credit-card" label="Wallet" color="#8B5CF6" onPress={() => router.push('/(farmer)/wallet' as any)} />
+          <QuickAction icon="plus" label="Add Product" color={Colors.primary} onPress={() => router.push('/(farmer)/products/add' as any)} />
+          <QuickAction icon="grid" label="My Products" color={Colors.primary} onPress={() => router.push('/(farmer)/products' as any)} />
+          <QuickAction icon="package" label="Orders" color={Colors.primary} onPress={() => router.push('/(farmer)/orders' as any)} />
+          <QuickAction icon="credit-card" label="Wallet" color={Colors.primary} onPress={() => router.push('/(farmer)/wallet' as any)} />
         </ScrollView>
       </View>
 
@@ -151,7 +190,7 @@ export default function FarmerDashboard() {
                 <StatusBadge status={order.status} size="sm" />
               </View>
               <View style={styles.orderInfo}>
-                <Text style={styles.orderLabel}>{order.quantity} units • {order.product?.title}</Text>
+                <Text style={styles.orderLabel}>{order.quantity} units • {order.product?.title || 'Unknown Product'}</Text>
                 <Text style={styles.orderTotal}>₨ {order.totalPrice.toLocaleString()}</Text>
               </View>
               <View style={styles.orderFooter}>
@@ -161,7 +200,10 @@ export default function FarmerDashboard() {
           ))
         ) : (
           <View style={styles.emptyCard}>
-            <Text style={styles.emptyText}>No pending orders yet 🌾</Text>
+            <View style={styles.emptyIconWrap}>
+              <Feather name="inbox" size={24} color={Colors.textSecondary} />
+            </View>
+            <Text style={styles.emptyText}>No pending orders yet</Text>
           </View>
         )}
       </View>
@@ -186,9 +228,9 @@ function OverviewCard({ icon, label, value, subtext, color, onPress }: { icon: s
 
 function QuickAction({ icon, label, color, onPress }: { icon: string; label: string; color: string; onPress?: () => void }) {
   return (
-    <TouchableOpacity onPress={onPress} style={styles.actionBtn}>
-      <View style={[styles.actionIcon, { backgroundColor: color }]}>
-        <Feather name={icon as any} size={24} color="#fff" />
+    <TouchableOpacity onPress={onPress} style={styles.actionBtn} activeOpacity={0.7}>
+      <View style={[styles.actionIcon, { backgroundColor: color + '15' }]}>
+        <Feather name={icon as any} size={24} color={color} />
       </View>
       <Text style={styles.actionLabel}>{label}</Text>
     </TouchableOpacity>
@@ -219,6 +261,7 @@ const styles = StyleSheet.create({
     alignItems: 'center', marginBottom: 24,
   },
   switchBtn: {
+    flexDirection: 'row', alignItems: 'center',
     backgroundColor: 'rgba(255,255,255,0.15)',
     paddingHorizontal: 12, paddingVertical: 6,
     borderRadius: 20,
@@ -294,6 +337,7 @@ const styles = StyleSheet.create({
   viewOrderBtn: { fontSize: 14, fontWeight: '800', color: Colors.agri.sabz, textAlign: 'right' },
 
   emptyCard: { backgroundColor: '#fff', padding: 32, borderRadius: 20, alignItems: 'center', borderWidth: 1, borderColor: '#F1F5F9', borderStyle: 'dashed' },
+  emptyIconWrap: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#F8FAFB', alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
   emptyText: { color: '#94A3B8', fontSize: 14, fontWeight: '600' },
 });
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, Alert, ScrollView,
   StyleSheet, Platform, Switch,
@@ -8,6 +8,7 @@ import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '@/hooks/useAuth';
 import { Colors } from '@/constants/colors';
+import userService from '@/services/user.service';
 
 interface MenuRow {
   icon: string;
@@ -65,6 +66,13 @@ function SectionCard({ title, children }: { title: string; children: React.React
 export default function BuyerProfile() {
   const { user, logout } = useAuth();
   const router = useRouter();
+  const [walletBalance, setWalletBalance] = useState<string>('...');
+
+  useEffect(() => {
+    userService.getWallet().then(data => {
+      setWalletBalance(`₨ ${data.availableBalance.toLocaleString()}`);
+    }).catch(() => setWalletBalance('₨ 0'));
+  }, []);
 
   const handleComingSoon = () => Alert.alert('Coming Soon', 'This feature is currently under development!');
 
@@ -160,7 +168,7 @@ export default function BuyerProfile() {
           {/* ── ORDERS & WALLET ──────────────────────────────────── */}
           <SectionCard title="Orders & Wallet">
             <SettingsRow icon="package" label="My Orders" onPress={() => router.push('/(buyer)/orders' as any)} />
-            <SettingsRow icon="credit-card" label="Wallet Balance" value="₨ 12,500" onPress={handleComingSoon} />
+            <SettingsRow icon="credit-card" label="Wallet Balance" value={walletBalance} onPress={handleComingSoon} />
             <SettingsRow icon="clock" label="Transaction History" onPress={handleComingSoon} />
             <SettingsRow icon="shield" label="Escrow Status" badge="1 Active" onPress={handleComingSoon} />
           </SectionCard>

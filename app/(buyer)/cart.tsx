@@ -1,7 +1,7 @@
 import React, { useCallback } from 'react';
 import {
   View, Text, TouchableOpacity, FlatList,
-  StyleSheet, Platform,
+  StyleSheet, Platform, Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
@@ -140,7 +140,16 @@ export default function CartScreen() {
           <Text style={styles.headerTitle}>Your Cart</Text>
           <Text style={styles.headerSub}>{items.length} {items.length === 1 ? 'item' : 'items'}</Text>
         </View>
-        <TouchableOpacity onPress={clearCart} style={styles.clearBtn}>
+        <TouchableOpacity onPress={() => {
+          Alert.alert(
+            'Clear Cart',
+            'Remove all items from your cart?',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Clear All', style: 'destructive', onPress: clearCart },
+            ]
+          );
+        }} style={styles.clearBtn}>
           <Text style={styles.clearText}>Clear</Text>
         </TouchableOpacity>
       </View>

@@ -1,15 +1,14 @@
 import React, { useCallback } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
-import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { Plus, MapPin, ShieldCheck, Wheat } from 'lucide-react-native';
 import { Colors } from '@/constants/colors';
-import type { Crop } from '@/constants/mockData';
-import { AiBadge } from './AiBadge';
+import type { Product } from '@/services/product.service';
 import { useCartStore } from '@/store/cartStore';
 import { useToast } from '@/components/shared/Toast';
 
 interface Props {
-  item: Crop;
+  item: Product;
 }
 
 export const ProductCard = React.memo(function ProductCard({ item }: Props) {
@@ -19,86 +18,82 @@ export const ProductCard = React.memo(function ProductCard({ item }: Props) {
 
   const handleAddToCart = useCallback(() => {
     addItem({
-      id: item.id,
-      productId: item.id,
-      name: item.name,
-      price: item.price,
+      id: item._id,
+      productId: item._id,
+      name: item.title,
+      price: item.pricePerUnit,
       quantity: 1,
       unit: item.unit,
-      farmerId: item.farmerId,
-      farmerName: item.farmerName,
-      maxStock: item.stockKg,
+      farmerId: item.farmer?._id ?? '',
+      farmerName: item.farmer?.name ?? 'Unknown',
+      maxStock: item.availableQuantity,
     });
     showToast({
       title: 'Added to Cart',
-      message: `${item.name} has been added to your cart.`,
+      message: `${item.title} has been added to your cart.`,
       variant: 'success',
     });
   }, [item, addItem, showToast]);
 
   const handlePress = useCallback(() => {
-    router.push(`/(buyer)/products/detail/${item.id}` as any);
-  }, [item.id, router]);
+    router.push(`/(buyer)/products/detail/${item._id}` as any);
+  }, [item._id, router]);
 
   const hasImage = item.images && item.images.length > 0;
-  const isLowStock = item.stockKg < 100;
+  const isLowStock = item.availableQuantity < 50;
+  const farmerCity = item.farmer?.location?.address ?? 'Pakistan';
 
   return (
-    <TouchableOpacity style={styles.card} onPress={handlePress} activeOpacity={0.92}>
+    <TouchableOpacity style={styles.card} onPress={handlePress} activeOpacity={0.9}>
       {/* ─── IMAGE AREA ─────────────────────────── */}
       <View style={styles.imageArea}>
         {hasImage ? (
           <Image
-            source={typeof item.images[0] === 'string' ? { uri: item.images[0] } : item.images[0]}
+            source={{ uri: item.images[0] }}
             style={styles.image}
             resizeMode="cover"
           />
         ) : (
-          <View style={styles.emojiWrap}>
-            <Text style={styles.emoji}>{item.emoji}</Text>
+          <View style={styles.placeholderWrap}>
+            <Wheat size={40} color={Colors.green[300]} strokeWidth={1.5} />
           </View>
         )}
-        
-        {/* AI Badge */}
-        <View style={styles.badgeOverlay}>
-          <AiBadge grade={item.quality} size="sm" />
+
+        {/* Verified Badge */}
+        <View style={styles.verifiedBadge}>
+          <ShieldCheck size={10} color={Colors.success} />
+          <Text style={styles.verifiedText}>Verified</Text>
         </View>
 
         {/* Low stock ribbon */}
         {isLowStock && (
           <View style={styles.stockRibbon}>
-            <Feather name="alert-circle" size={9} color="#fff" />
-            <Text style={styles.stockRibbonText}>{item.stockKg}kg left</Text>
+            <Text style={styles.stockRibbonText}>{item.availableQuantity} {item.unit} left</Text>
           </View>
         )}
       </View>
 
       {/* ─── BODY ───────────────────────────────── */}
       <View style={styles.body}>
-        {/* Product Name */}
-        <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
+        <Text style={styles.name} numberOfLines={1}>{item.title}</Text>
 
-        {/* Farmer Info Pill */}
-        <View style={styles.farmerPill}>
-          <Feather name="map-pin" size={9} color={Colors.textSecondary} />
-          <Text style={styles.farmerText} numberOfLines={1}>
-            {item.farmerCity}
-          </Text>
+        <View style={styles.locationRow}>
+          <MapPin size={10} color={Colors.textTertiary} />
+          <Text style={styles.locationText} numberOfLines={1}>{farmerCity}</Text>
         </View>
 
-        {/* Price + Add to Cart */}
         <View style={styles.footer}>
           <View>
-            <Text style={styles.price}>₨{item.price}</Text>
+            <Text style={styles.price}>₨{item.pricePerUnit}</Text>
             <Text style={styles.unit}>per {item.unit}</Text>
           </View>
           <TouchableOpacity
             onPress={handleAddToCart}
             style={styles.cartBtn}
             activeOpacity={0.8}
-            hitSlop={4}
+            hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
           >
-            <Feather name="plus" size={16} color="#fff" />
+            <Plus size={16} color="#fff" strokeWidth={2.5} />
           </TouchableOpacity>
         </View>
       </View>
@@ -119,93 +114,54 @@ const styles = StyleSheet.create({
     elevation: 3,
     marginBottom: 4,
     borderWidth: 1,
-    borderColor: '#F1F5F9',
+    borderColor: Colors.cardBorder,
   },
-
-  // Image
   imageArea: {
-    height: 148,
-    backgroundColor: '#F0FDF4',
+    height: 140,
+    backgroundColor: Colors.green[50],
     position: 'relative',
   },
-  image: {
-    width: '100%',
-    height: '100%',
-  },
-  emojiWrap: {
+  image: { width: '100%', height: '100%' },
+  placeholderWrap: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#F4FAF4',
+    backgroundColor: Colors.green[50],
   },
-  emoji: { fontSize: 58 },
-
-  // Overlays
-  badgeOverlay: {
-    position: 'absolute',
-    top: 8,
-    left: 8,
+  verifiedBadge: {
+    position: 'absolute', top: 8, left: 8,
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    backgroundColor: Colors.green[50],
+    borderWidth: 1, borderColor: Colors.green[200],
+    paddingHorizontal: 7, paddingVertical: 3, borderRadius: 8,
   },
+  verifiedText: { fontSize: 9, fontWeight: '700', color: Colors.success },
   stockRibbon: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
+    position: 'absolute', bottom: 0, left: 0, right: 0,
     backgroundColor: 'rgba(220, 38, 38, 0.88)',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 4,
-    gap: 4,
+    alignItems: 'center', paddingVertical: 4,
   },
-  stockRibbonText: { color: '#fff', fontSize: 10, fontWeight: '800', letterSpacing: 0.2 },
+  stockRibbonText: { color: '#fff', fontSize: 10, fontWeight: '800' },
 
-  // Body
   body: { padding: 12 },
   name: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: '#111827',
-    marginBottom: 5,
+    fontSize: 13, fontWeight: '800',
+    color: Colors.textPrimary, marginBottom: 4,
     letterSpacing: -0.2,
   },
-  farmerPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginBottom: 10,
-  },
-  farmerText: {
-    fontSize: 11,
-    color: Colors.textSecondary,
-    fontWeight: '600',
-    flex: 1,
-  },
-
-  // Footer
+  locationRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 10 },
+  locationText: { fontSize: 11, color: Colors.textSecondary, fontWeight: '600', flex: 1 },
   footer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
   },
-  price: {
-    fontSize: 17,
-    fontWeight: '900',
-    color: Colors.primary,
-    letterSpacing: -0.5,
-  },
-  unit: { fontSize: 10, color: '#9CA3AF', fontWeight: '600', marginTop: 1 },
+  price: { fontSize: 16, fontWeight: '900', color: Colors.primary, letterSpacing: -0.5 },
+  unit: { fontSize: 10, color: Colors.textTertiary, fontWeight: '600', marginTop: 1 },
   cartBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 11,
+    width: 34, height: 34, borderRadius: 11,
     backgroundColor: Colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: 'center', justifyContent: 'center',
     shadowColor: Colors.primary,
     shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.35,
-    shadowRadius: 6,
-    elevation: 4,
+    shadowOpacity: 0.35, shadowRadius: 6, elevation: 4,
   },
 });

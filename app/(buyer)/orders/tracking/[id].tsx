@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Modal, TextInput, Platform, ScrollView } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Modal, TextInput, Platform, ScrollView, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { Colors } from '@/constants/colors';
-import { MOCK_ORDERS } from '@/constants/mockData';
+import orderService, { Order } from '@/services/order.service';
 import { Button } from '@/components/ui';
 import { EscrowBadge } from '@/components/checkout/EscrowBadge';
 import { StatusTimeline, TimelineStep } from '@/components/checkout/StatusTimeline';
@@ -11,15 +11,26 @@ import { StatusTimeline, TimelineStep } from '@/components/checkout/StatusTimeli
 export default function OrderTrackingScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  
-  const order = MOCK_ORDERS.find(o => o.id === id) || MOCK_ORDERS[0];
+
+  const [order, setOrder] = useState<Order | null>(null);
+  const [loading, setLoading] = useState(true);
   const [otpVisible, setOtpVisible] = useState(false);
   const [otpCode, setOtpCode] = useState('');
 
-  // Map order delivery Progress to timeline steps
-  let activeStep = 3; // Mocking it to "Out for delivery"
-  if (order.deliveryProgress === 100) activeStep = 4;
-  else if (order.deliveryProgress === 0) activeStep = 1;
+  useEffect(() => {
+    if (!id) return;
+    orderService.getById(id as string)
+      .then(setOrder)
+      .catch(() => setOrder(null))
+      .finally(() => setLoading(false));
+  }, [id]);
+
+  // Map order status to timeline step
+  let activeStep = 1;
+  if (order?.status === 'paid') activeStep = 2;
+  if (order?.status === 'bidding') activeStep = 3;
+  if (order?.status === 'in_transit') activeStep = 4;
+  if (order?.status === 'delivered') activeStep = 5;
 
   const ORDER_TRACKER: TimelineStep[] = [
     { key: 't1', label: 'Order Confirmed', timestamp: '10:30 AM', icon: 'check-circle' },
@@ -37,9 +48,31 @@ export default function OrderTrackingScreen() {
      }
   };
 
+  if (loading) {
+    return (
+      <View style={[styles.root, { alignItems: 'center', justifyContent: 'center' }]}>
+        <ActivityIndicator size="large" color={Colors.primary} />
+        <Text style={{ color: Colors.textSecondary, marginTop: 12 }}>Loading order...</Text>
+      </View>
+    );
+  }
+
+  if (!order) {
+    return (
+      <View style={[styles.root, { alignItems: 'center', justifyContent: 'center', padding: 24 }]}>
+        <Feather name="alert-circle" size={48} color={Colors.error} />
+        <Text style={{ fontSize: 18, fontWeight: '800', color: Colors.textPrimary, marginTop: 16 }}>Order Not Found</Text>
+        <Text style={{ color: Colors.textSecondary, textAlign: 'center', marginTop: 8 }}>This order could not be found or you may not have permission to view it.</Text>
+        <TouchableOpacity style={{ marginTop: 24, backgroundColor: Colors.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12 }} onPress={() => router.back()}>
+          <Text style={{ color: '#fff', fontWeight: '700' }}>Go Back</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.root}>
-      {/* ── MAP MOCK HEADER ── */}
+      {/* ── MAP HEADER ── */}
       <View style={styles.mapArea}>
          <View style={styles.mapBg}>
              <Feather name="map" size={100} color={Colors.gray[200]} style={{ opacity: 0.5 }} />
@@ -118,7 +151,7 @@ export default function OrderTrackingScreen() {
                   <Text style={styles.modalTitle}>Confirm Delivery</Text>
                   <Text style={styles.modalBody}>
                       By confirming this OTP, you authorize DigitalKisan to release the
-                      <Text style={{ fontWeight: 'bold' }}> ₨{order.total.toLocaleString()} </Text>
+                      <Text style={{ fontWeight: 'bold' }}> ₨{order.totalPrice.toLocaleString()} </Text>
                       currently held in Escrow to the farmer.
                   </Text>
 

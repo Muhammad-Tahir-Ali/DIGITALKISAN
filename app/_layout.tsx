@@ -11,7 +11,17 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { PaperProvider, MD3LightTheme } from 'react-native-paper';
 import { Theme } from '@/constants/theme';
 import { useAuth } from '@/hooks/useAuth';
+import { useCartStore } from '@/store/cartStore';
 import { ToastProvider } from '@/components/shared/Toast';
+import {
+  useFonts,
+  Inter_400Regular,
+  Inter_500Medium,
+  Inter_600SemiBold,
+  Inter_700Bold,
+  Inter_800ExtraBold,
+  Inter_900Black,
+} from '@expo-google-fonts/inter';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -36,10 +46,24 @@ const paperTheme = {
 
 function RootLayoutNav() {
   const { rehydrate } = useAuth();
+  const hydrateCart = useCartStore((s) => s.hydrateFromStorage);
+  const [fontsLoaded] = useFonts({
+    Inter_400Regular,
+    Inter_500Medium,
+    Inter_600SemiBold,
+    Inter_700Bold,
+    Inter_800ExtraBold,
+    Inter_900Black,
+  });
 
   useEffect(() => {
     rehydrate();
+    hydrateCart();
   }, []);
+
+  if (!fontsLoaded) {
+    return null;
+  }
 
   return (
     <>

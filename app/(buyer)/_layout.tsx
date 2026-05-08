@@ -36,9 +36,9 @@ export default function BuyerLayout() {
         tabBarStyle: {
           backgroundColor: '#fff',
           borderTopWidth: 0,
-          height: Platform.OS === 'ios' ? 90 : 70,
-          paddingBottom: Platform.OS === 'ios' ? 30 : 12,
-          paddingTop: 12,
+          minHeight: Platform.OS === 'ios' ? 80 : 60,
+          paddingBottom: Platform.OS === 'ios' ? 25 : 8,
+          paddingTop: 8,
           borderTopLeftRadius: 24,
           borderTopRightRadius: 24,
           shadowColor: '#000',
@@ -92,7 +92,7 @@ export default function BuyerLayout() {
       <Tabs.Screen
         name="checkout"
         options={{
-          tabBarButton: () => null,
+          href: null,
           headerShown: true,
           title: 'Checkout'
         }}
@@ -100,41 +100,41 @@ export default function BuyerLayout() {
       <Tabs.Screen
         name="order-confirmed"
         options={{
-          tabBarButton: () => null,
+          href: null,
           title: 'Success'
         }}
       />
       <Tabs.Screen
         name="orders/index"
         options={{
-          tabBarButton: () => null,
+          href: null,
           title: 'My Orders'
         }}
       />
       <Tabs.Screen
         name="orders/[id]"
         options={{
-          tabBarButton: () => null,
+          href: null,
           title: 'Order Details'
         }}
       />
       <Tabs.Screen
         name="orders/tracking/[id]"
         options={{
-          tabBarButton: () => null,
+          href: null,
           title: 'Track Order'
         }}
       />
       <Tabs.Screen
         name="products/[category]"
         options={{
-          tabBarButton: () => null,
+          href: null,
         }}
       />
       <Tabs.Screen
         name="products/detail/[id]"
         options={{
-          tabBarButton: () => null,
+          href: null,
         }}
       />
     </Tabs>

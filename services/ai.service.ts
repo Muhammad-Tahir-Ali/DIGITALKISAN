@@ -1,5 +1,6 @@
 import api from './api';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
+import { Platform } from 'react-native';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -28,15 +29,34 @@ const aiService = {
     const filename = imageUri.split('/').pop() ?? 'crop.jpg';
     const mimeType = filename.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
 
-    // Read file as base64 — works reliably on both iOS and Android
-    const base64Data = await FileSystem.readAsStringAsync(imageUri, {
-      encoding: 'base64',
-    });
+    let base64Data: string;
 
+    if (Platform.OS === 'web') {
+      // On web, use fetch + FileReader to convert the blob URL to base64
+      const response = await fetch(imageUri);
+      const blob = await response.blob();
+      base64Data = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const result = reader.result as string;
+          // Strip the "data:image/jpeg;base64," prefix
+          resolve(result.split(',')[1]);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    } else {
+      base64Data = await FileSystem.readAsStringAsync(imageUri, {
+        encoding: 'base64',
+      });
+    }
+
+    // Send as JSON — the auth interceptor will correctly inject the Bearer token
+    // Gemini can take 30-60s for large images, so we use a 90s timeout here
     const { data } = await api.post('/ai/classify', {
-      imageData: base64Data,   // pure base64, no data URI prefix
+      imageData: base64Data,
       mimeType,
-    });
+    }, { timeout: 90000 });
 
     return data.data as ClassificationResult;
   },

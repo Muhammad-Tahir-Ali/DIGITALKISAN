@@ -1,14 +1,13 @@
 import React, { useState, useMemo } from 'react';
 import {
   View, Text, TouchableOpacity, KeyboardAvoidingView,
-  Platform, ScrollView, StyleSheet, Alert,
+  Platform, ScrollView, Alert,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { Feather } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
+import { Tractor, ShoppingBag, Truck, User, ArrowLeft } from 'lucide-react-native';
 import { Colors } from '@/constants/colors';
 import { useAuth } from '@/hooks/useAuth';
 import { Button, Input, PasswordInput } from '@/components/ui';
@@ -20,30 +19,30 @@ const loginSchema = z.object({
 
 type LoginForm = z.infer<typeof loginSchema>;
 
-const ROLE_CONFIG: Record<string, { label: string; emoji: string; gradient: [string, string]; color: string }> = {
+const ROLE_CONFIG: Record<string, { label: string; Icon: any; color: string; bg: string }> = {
   farmer: {
     label: 'Farmer',
-    emoji: '🌾',
-    gradient: ['#052e16', '#166534'],
-    color: Colors.agri.sabz,
+    Icon: Tractor,
+    color: Colors.primary,
+    bg: '#E8F5E9',
   },
   buyer: {
     label: 'Buyer',
-    emoji: '🧺',
-    gradient: ['#78350f', '#b45309'],
-    color: Colors.agri.peela,
+    Icon: ShoppingBag,
+    color: Colors.amber[600],
+    bg: '#FFF8E1',
   },
   logistics: {
     label: 'Logistics',
-    emoji: '🚛',
-    gradient: ['#1e3a5f', '#2d4a7a'],
-    color: Colors.agri.shab,
+    Icon: Truck,
+    color: '#1e3a5f',
+    bg: '#DBEAFE',
   },
   default: {
     label: 'Member',
-    emoji: '👤',
-    gradient: ['#111827', '#374151'],
-    color: Colors.primary,
+    Icon: User,
+    color: Colors.textPrimary,
+    bg: '#F1F5F9',
   },
 };
 
@@ -96,40 +95,32 @@ export default function LoginScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={styles.root}
+      className="flex-1 bg-surface"
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      {/* ── HERO ── */}
-      <LinearGradient
-        colors={config.gradient}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.hero}
-      >
-        <View style={styles.heroBlob1} />
-        <View style={styles.heroBlob2} />
-
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
-          <Feather name="arrow-left" size={20} color="rgba(255,255,255,0.85)" />
+      {/* ── HEADER ── */}
+      <View className="px-6 pt-14 pb-6 flex-row items-center border-b border-border bg-surface">
+        <TouchableOpacity
+          className="w-10 h-10 rounded-full bg-gray-50 items-center justify-center mr-4 border border-border"
+          onPress={() => router.back()}
+        >
+          <ArrowLeft size={20} color={Colors.textPrimary} />
         </TouchableOpacity>
-
-        <View style={styles.heroBadge}>
-          <Text style={styles.heroBadgeEmoji}>{config.emoji}</Text>
+        <View className="flex-1">
+          <Text className="text-xl font-bold text-textPrimary">Welcome Back</Text>
+          <Text className="text-sm font-medium text-textSecondary">Sign in as a DigitalKisan {config.label}</Text>
         </View>
-        <Text style={styles.heroTitle}>Welcome Back</Text>
-        <Text style={styles.heroSub}>Sign in as a DigitalKisan {config.label}</Text>
-      </LinearGradient>
+        <View className="w-12 h-12 rounded-xl items-center justify-center" style={{ backgroundColor: config.bg }}>
+           <config.Icon size={24} color={config.color} strokeWidth={2} />
+        </View>
+      </View>
 
-      {/* ── FORM SHEET ── */}
+      {/* ── FORM ── */}
       <ScrollView
-        style={styles.sheet}
-        contentContainerStyle={styles.sheetContent}
+        className="flex-1 px-6 pt-8"
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.formHeading}>Sign In</Text>
-        <Text style={styles.formSub}>Enter your credentials to continue</Text>
-
         <Controller
           control={control}
           name="email"
@@ -166,10 +157,10 @@ export default function LoginScreen() {
         />
 
         <TouchableOpacity
-          style={styles.forgotBtn}
+          className="self-end mb-8 mt-[-8px]"
           onPress={() => Alert.alert('Coming Soon', 'Password reset will be available soon!')}
         >
-          <Text style={[styles.forgotText, { color: config.color }]}>Forgot Password?</Text>
+          <Text className="text-sm font-bold" style={{ color: config.color }}>Forgot Password?</Text>
         </TouchableOpacity>
 
         <Button
@@ -178,111 +169,30 @@ export default function LoginScreen() {
           loading={isSubmitting}
           fullWidth
           size="xl"
-          style={{ backgroundColor: config.color, borderRadius: 16, marginBottom: 20 }}
+          style={{ backgroundColor: config.color, borderRadius: 16, marginBottom: 24 }}
         />
 
-        <View style={styles.dividerRow}>
-          <View style={styles.divider} />
-          <Text style={styles.dividerText}>OR</Text>
-          <View style={styles.divider} />
+        <View className="flex-row items-center my-6">
+          <View className="flex-1 h-[1px] bg-border" />
+          <Text className="mx-4 text-xs font-bold text-textTertiary">OR</Text>
+          <View className="flex-1 h-[1px] bg-border" />
         </View>
 
         <TouchableOpacity
-          style={[styles.registerBtn, { borderColor: config.color }]}
+          className="h-14 rounded-2xl border-2 items-center justify-center mb-6"
+          style={{ borderColor: config.color }}
           onPress={() => router.push({ pathname: '/(auth)/role-select' })}
         >
-          <Text style={[styles.registerBtnText, { color: config.color }]}>Create a New Account</Text>
+          <Text className="text-base font-bold" style={{ color: config.color }}>Create a New Account</Text>
         </TouchableOpacity>
 
-        <Text style={styles.terms}>
+        <Text className="text-center text-xs font-medium text-textTertiary px-4 leading-5 mb-8">
           By continuing, you agree to our{' '}
-          <Text style={styles.termsLink}>Terms of Service</Text>
+          <Text className="font-bold text-textSecondary">Terms of Service</Text>
           {' '}and{' '}
-          <Text style={styles.termsLink}>Privacy Policy</Text>.
+          <Text className="font-bold text-textSecondary">Privacy Policy</Text>.
         </Text>
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
-
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: Colors.background },
-
-  // Hero
-  hero: {
-    paddingTop: Platform.OS === 'ios' ? 60 : 48,
-    paddingBottom: 40,
-    paddingHorizontal: 28,
-    overflow: 'hidden',
-  },
-  heroBlob1: {
-    position: 'absolute', top: -50, right: -40,
-    width: 200, height: 200, borderRadius: 100,
-    backgroundColor: 'rgba(255,255,255,0.05)',
-  },
-  heroBlob2: {
-    position: 'absolute', bottom: -20, left: -20,
-    width: 120, height: 120, borderRadius: 60,
-    backgroundColor: 'rgba(255,255,255,0.04)',
-  },
-  backBtn: {
-    width: 40, height: 40, borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
-    alignItems: 'center', justifyContent: 'center',
-    marginBottom: 24,
-  },
-  heroBadge: {
-    width: 64, height: 64, borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
-    alignItems: 'center', justifyContent: 'center',
-    marginBottom: 16,
-  },
-  heroBadgeEmoji: { fontSize: 30 },
-  heroTitle: {
-    fontSize: 28, fontWeight: '900', color: '#fff',
-    letterSpacing: -0.8, marginBottom: 4,
-  },
-  heroSub: { fontSize: 14, fontWeight: '500', color: 'rgba(255,255,255,0.65)' },
-
-  // Sheet
-  sheet: {
-    flex: 1,
-    backgroundColor: Colors.background,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    marginTop: -20,
-  },
-  sheetContent: {
-    paddingHorizontal: 24,
-    paddingTop: 28,
-    paddingBottom: 60,
-  },
-  formHeading: {
-    fontSize: 24, fontWeight: '900', color: Colors.textPrimary,
-    letterSpacing: -0.5, marginBottom: 4,
-  },
-  formSub: {
-    fontSize: 14, color: Colors.textSecondary,
-    fontWeight: '500', marginBottom: 28,
-  },
-  forgotBtn: { alignSelf: 'flex-end', marginBottom: 24, marginTop: -8 },
-  forgotText: { fontSize: 13, fontWeight: '700' },
-
-  dividerRow: { flexDirection: 'row', alignItems: 'center', marginVertical: 20 },
-  divider: { flex: 1, height: 1, backgroundColor: Colors.border },
-  dividerText: { color: Colors.textTertiary, fontSize: 12, fontWeight: '700', marginHorizontal: 12 },
-
-  registerBtn: {
-    height: 56, borderRadius: 16, borderWidth: 2,
-    alignItems: 'center', justifyContent: 'center', marginBottom: 24,
-  },
-  registerBtnText: { fontSize: 15, fontWeight: '800' },
-
-  terms: {
-    textAlign: 'center', color: Colors.textTertiary,
-    fontSize: 12, lineHeight: 18, paddingHorizontal: 16,
-  },
-  termsLink: { fontWeight: '700', color: Colors.textSecondary },
-});

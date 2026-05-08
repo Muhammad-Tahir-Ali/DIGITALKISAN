@@ -2,7 +2,7 @@ import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView,
   FlatList, StyleSheet, Platform, Dimensions,
-  NativeSyntheticEvent, NativeScrollEvent, Animated, Image, ActivityIndicator
+  NativeSyntheticEvent, NativeScrollEvent, Animated, Image, ActivityIndicator, Share, Alert
 } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
@@ -101,9 +101,9 @@ export default function ProductDetailScreen() {
     );
   }
 
-  const productImages = product.images && product.images.length > 0 
+  const productImages: string[] = product.images && product.images.length > 0 
     ? product.images 
-    : [{ isEmoji: true, bg: '#F0FDF4' }];
+    : ['__emoji__'];
     
   const totalPrice = product.pricePerUnit * qty;
   const emoji = '🌾'; // Fallback
@@ -129,13 +129,13 @@ export default function ProductDetailScreen() {
             keyExtractor={(_, i) => String(i)}
             renderItem={({ item: img }) => (
               <View style={[styles.slide, { width: SW }]}>
-                {img.isEmoji ? (
-                  <View style={[styles.slideEmojiWrap, { backgroundColor: img.bg }]}>
+                {img === '__emoji__' ? (
+                  <View style={[styles.slideEmojiWrap, { backgroundColor: '#F0FDF4' }]}>
                     <Text style={styles.slideEmoji}>{emoji}</Text>
                   </View>
                 ) : (
                   <Image 
-                    source={typeof img === 'string' ? { uri: img } : img} 
+                    source={{ uri: img }} 
                     style={styles.fullImage}
                     resizeMode="cover"
                   />
@@ -167,7 +167,15 @@ export default function ProductDetailScreen() {
                   color={isWishlisted ? Colors.error : Colors.textPrimary}
                 />
               </TouchableOpacity>
-              <TouchableOpacity style={styles.overlayBtn}>
+              <TouchableOpacity 
+                style={styles.overlayBtn}
+                onPress={() => {
+                  Share.share({
+                    title: product.title,
+                    message: `Check out ${product.title} for ₨${product.pricePerUnit}/${product.unit} on DigitalKisan!`,
+                  });
+                }}
+              >
                 <Feather name="share-2" size={20} color={Colors.textPrimary} />
               </TouchableOpacity>
               <TouchableOpacity
@@ -222,7 +230,14 @@ export default function ProductDetailScreen() {
                 {' '}{farmerCity}
               </Text>
             </View>
-            <TouchableOpacity style={styles.viewProfileBtn}>
+            <TouchableOpacity 
+              style={styles.viewProfileBtn}
+              onPress={() => Alert.alert(
+                product.farmer.name,
+                `📍 ${farmerCity}\n⭐ ${farmerRating.toFixed(1)} rating`,
+                [{ text: 'Close' }]
+              )}
+            >
               <Text style={styles.viewProfileText}>Profile</Text>
               <Feather name="chevron-right" size={14} color={Colors.primary} />
             </TouchableOpacity>

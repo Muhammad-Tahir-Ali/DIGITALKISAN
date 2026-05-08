@@ -17,7 +17,8 @@ export interface Product {
   unit: string;
   availableQuantity: number;
   images: string[];
-  status: 'active' | 'sold_out' | 'hidden';
+  status: 'active' | 'sold_out' | 'hidden' | 'pending_ai' | 'rejected';
+  rejectionReason?: string;
   rating: number;
   ratingsQuantity: number;
   createdAt: string;
@@ -31,6 +32,8 @@ export interface CreateProductPayload {
   unit: string;
   availableQuantity: number;
   images?: string[];
+  imageData?: string; // Base64 image payload for AI grading
+  mimeType?: string;
 }
 
 // ─── Service ─────────────────────────────────────────────────────────────────
@@ -42,6 +45,14 @@ const productService = {
    */
   getAll: async (filters?: Record<string, string | number>): Promise<Product[]> => {
     const { data } = await api.get('/products', { params: filters });
+    return data.data.products;
+  },
+
+  /**
+   * Get products for the logged in farmer
+   */
+  getMyProducts: async (): Promise<Product[]> => {
+    const { data } = await api.get('/products/my-products');
     return data.data.products;
   },
 

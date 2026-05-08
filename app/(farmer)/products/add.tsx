@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   View, Text, TextInput, TouchableOpacity, ScrollView, Platform, 
-  ToastAndroid, Alert, Image, KeyboardAvoidingView, StyleSheet, Dimensions 
+  ToastAndroid, Alert, Image, KeyboardAvoidingView, StyleSheet, Dimensions, ActivityIndicator
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -21,27 +21,86 @@ const productSchema = z.object({
   price: z.string().min(1, 'Price is required'),
   quantity: z.string().min(1, 'Quantity is required'),
   unit: z.string().min(1, 'Unit is required'),
+  category: z.string().min(1, 'Category is required'),
 });
 
 type ProductForm = z.infer<typeof productSchema>;
 
-const UNITS = ['kg', 'maund', 'tons', 'dozens'];
+const UNITS = ['kg', 'ton', 'liter', 'piece', 'dozen'];
+const CATEGORIES = ['grains', 'vegetables', 'fruits', 'dairy', 'livestock', 'other'];
 
 export default function AddProductScreen() {
   const router = useRouter();
+  const { productId } = useLocalSearchParams<{ productId?: string }>();
+  const isEditing = !!productId;
+
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [isSimulatingAI, setIsSimulatingAI] = useState(false);
+  const [prefilling, setPrefilling] = useState(isEditing);
+  const [submissionStatus, setSubmissionStatus] = useState<{ type: 'success' | 'error' | 'pending'; title: string; message: string; productId?: string } | null>(null);
 
-  const { control, handleSubmit, setValue, watch, formState: { errors } } = useForm<ProductForm>({
+  const { control, handleSubmit, setValue, watch, reset, formState: { errors } } = useForm<ProductForm>({
     resolver: zodResolver(productSchema),
-    defaultValues: { name: '', price: '', quantity: '', unit: 'kg' },
+    defaultValues: { name: '', price: '', quantity: '', unit: 'kg', category: 'grains' },
   });
 
   const selectedUnit = watch('unit');
+  const selectedCategory = watch('category');
+
+  // Polling for AI status
+  useEffect(() => {
+    let interval: ReturnType<typeof setInterval>;
+    
+    if (submissionStatus?.type === 'pending' && submissionStatus.productId) {
+      interval = setInterval(async () => {
+        try {
+          const p = await productService.getById(submissionStatus.productId!);
+          if (p.status === 'active') {
+            setSubmissionStatus({
+              type: 'success',
+              title: 'Listing Approved! ✅',
+              message: 'Your product has been approved by AI and is now live.',
+            });
+            clearInterval(interval);
+          } else if (p.status === 'rejected') {
+            setSubmissionStatus({
+              type: 'error',
+              title: 'Listing Rejected ❌',
+              message: p.rejectionReason || 'Your product was rejected by our AI.',
+            });
+            clearInterval(interval);
+          }
+        } catch (e) {
+          console.error("Error polling product status", e);
+        }
+      }, 3000); // Poll every 3 seconds
+    }
+
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [submissionStatus]);
+
+  // Pre-fill form when editing
+  useEffect(() => {
+    if (!productId) return;
+    productService.getById(productId).then(p => {
+      reset({
+        name:     p.title,
+        price:    String(p.pricePerUnit),
+        quantity: String(p.availableQuantity),
+        unit:     p.unit,
+        category: p.category,
+      });
+      if (p.images && p.images.length > 0) setImageUri(p.images[0]);
+    }).catch(() => {
+      Alert.alert('Error', 'Could not load product details.');
+    }).finally(() => setPrefilling(false));
+  }, [productId]);
 
   const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'],
       allowsEditing: true,
       aspect: [4, 3],
       quality: 0.8,
@@ -54,46 +113,134 @@ export default function AddProductScreen() {
 
   const onSubmit = async (data: ProductForm) => {
     if (!imageUri) {
-      if (Platform.OS === 'android') ToastAndroid.show('Please upload a product photo.', ToastAndroid.SHORT);
-      else Alert.alert('Error', 'Please upload a product photo.');
+      Alert.alert('Photo Required', 'Please upload a photo of your crop before listing.');
       return;
     }
 
     setIsSimulatingAI(true);
-    
+
     try {
-      // 1. Analyze image with Gemini via our backend
-      const aiResult = await aiService.classifyCrop(imageUri);
-      
-      // If it's not a crop, warn the user and stop
-      if (aiResult.digit === '0') {
-        Alert.alert('Invalid Image', 'The AI detected this is not a crop. Please upload a valid crop photo.');
-        setIsSimulatingAI(false);
-        return;
+      // 1. Prepare base64 image data
+      let base64Data: string | undefined;
+      let mimeType: string = 'image/jpeg';
+
+      if (!isEditing && imageUri) {
+        if (Platform.OS === 'web') {
+          // On web, imageUri is a blob URL — fetch it to get the actual binary + real MIME type
+          const response = await fetch(imageUri);
+          const blob = await response.blob();
+          // Use the actual blob MIME type (not guessed from filename)
+          mimeType = blob.type || 'image/jpeg';
+          base64Data = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+              const result = reader.result as string;
+              // result is: "data:image/jpeg;base64,/9j/..."
+              // Strip the prefix to get raw base64
+              resolve(result.split(',')[1]);
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+          });
+        } else {
+          // Native: read file as base64 directly
+          const filename = imageUri.split('/').pop() ?? 'crop.jpg';
+          mimeType = filename.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
+          const FileSystem = require('expo-file-system/legacy');
+          base64Data = await FileSystem.readAsStringAsync(imageUri, { encoding: 'base64' });
+        }
       }
 
-      // 2. Create the product via API
-      await productService.create({
+      // 2. Prepare payload
+      const payload: any = {
         title: data.name,
-        description: `AI Verified: ${aiResult.label}. Quality Grade: ${aiResult.grade}.`,
-        category: 'grains', // Hardcoded to grains for now, but real app might have a picker
-        pricePerUnit: parseFloat(data.price),
+        description: `Fresh ${data.category} listed by farmer.`,
+        category: data.category,
+        pricePerUnit: parseFloat(data.price.replace(/[^0-9.]/g, '')),
         unit: data.unit,
-        availableQuantity: parseInt(data.quantity, 10),
-      });
+        availableQuantity: parseInt(data.quantity.replace(/[^0-9]/g, ''), 10),
+      };
 
-      Alert.alert(
-        'Listing Created! ✅', 
-        `AI graded your crop as ${aiResult.label} (${aiResult.grade}). It is now live on the marketplace.`, 
-        [{ text: 'Awesome', onPress: () => router.back() }]
-      );
+      if (isEditing && productId) {
+        await productService.update(productId, payload);
+        setSubmissionStatus({
+          type: 'success',
+          title: 'Listing Updated! ✅',
+          message: 'Your product listing has been updated successfully.'
+        });
+      } else {
+        if (base64Data) {
+          payload.imageData = base64Data;
+          payload.mimeType = mimeType;
+        }
+
+        const createdProduct = await productService.create(payload);
+        
+        setSubmissionStatus({
+          type: createdProduct.status === 'pending_ai' ? 'pending' : 'success',
+          title: createdProduct.status === 'pending_ai' ? 'AI Analyzing Listing ⏳' : 'Listing Submitted! ✅',
+          message: createdProduct.status === 'pending_ai' ? 'Your product is currently being reviewed by our AI. Please wait...' : 'Your product has been listed successfully.',
+          productId: createdProduct._id,
+        });
+      }
     } catch (e: any) {
-      const msg = e?.response?.data?.message ?? 'Failed to analyze or list product.';
-      Alert.alert('Error', msg);
+      const msg = e?.response?.data?.message ?? e?.message ?? 'Failed to list product. Please try again.';
+      setSubmissionStatus({
+        type: 'error',
+        title: 'Error',
+        message: msg
+      });
     } finally {
       setIsSimulatingAI(false);
     }
   };
+
+  if (prefilling) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F8FAFB' }}>
+        <ActivityIndicator size="large" color={Colors.primary} />
+        <Text style={{ marginTop: 12, color: Colors.textSecondary, fontWeight: '600' }}>Loading product...</Text>
+      </View>
+    );
+  }
+
+  if (submissionStatus) {
+    const isSuccess = submissionStatus.type === 'success';
+    const isError = submissionStatus.type === 'error';
+    const isPending = submissionStatus.type === 'pending';
+    
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center', padding: 24, backgroundColor: '#fff' }]}>
+        <View style={{ width: 80, height: 80, borderRadius: 40, backgroundColor: isSuccess ? '#DCFCE7' : isError ? '#FEE2E2' : '#EFF6FF', alignItems: 'center', justifyContent: 'center', marginBottom: 24 }}>
+          {isPending ? (
+            <ActivityIndicator size="large" color="#3B82F6" />
+          ) : (
+            <Feather name={isSuccess ? "check" : "x"} size={40} color={isSuccess ? "#16A34A" : isError ? "#DC2626" : "#3B82F6"} />
+          )}
+        </View>
+        <Text style={{ fontSize: 24, fontWeight: '900', color: Colors.textPrimary, marginBottom: 12, textAlign: 'center' }}>
+          {submissionStatus.title}
+        </Text>
+        <Text style={{ fontSize: 16, color: '#64748B', textAlign: 'center', marginBottom: 40, lineHeight: 24 }}>
+          {submissionStatus.message}
+        </Text>
+        {!isPending && (
+          <TouchableOpacity 
+            style={[styles.submitBtn, { width: '100%', backgroundColor: isSuccess ? Colors.agri.sabz : '#1E293B' }]}
+            onPress={() => {
+              if (isSuccess) {
+                router.back();
+              } else {
+                setSubmissionStatus(null);
+              }
+            }}
+          >
+            <Text style={styles.submitBtnText}>{isSuccess ? 'Go to My Products' : 'Try Again'}</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    );
+  }
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.container}>
@@ -104,7 +251,7 @@ export default function AddProductScreen() {
         >
           <Feather name="arrow-left" size={22} color={Colors.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Add New Listing</Text>
+        <Text style={styles.headerTitle}>{isEditing ? 'Edit Listing' : 'Add New Listing'}</Text>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -175,6 +322,22 @@ export default function AddProductScreen() {
             {errors.name && <Text style={styles.errorText}>{errors.name.message}</Text>}
           </View>
 
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Category</Text>
+            <View style={styles.unitGrid}>
+              {CATEGORIES.map(cat => (
+                <TouchableOpacity
+                  key={cat}
+                  onPress={() => setValue('category', cat)}
+                  style={[styles.unitBtn, selectedCategory === cat ? styles.unitBtnActive : null]}
+                >
+                  <Text style={[styles.unitBtnText, selectedCategory === cat ? styles.unitBtnTextActive : null, { textTransform: 'capitalize' }]}>{cat}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            {errors.category && <Text style={styles.errorText}>{errors.category.message}</Text>}
+          </View>
+
           <View style={styles.row}>
              <View style={{ flex: 1.2, marginRight: 12 }}>
                 <Text style={styles.label}>Unit</Text>
@@ -234,7 +397,9 @@ export default function AddProductScreen() {
       {/* FINAL ACTION */}
       <View style={styles.footer}>
          <TouchableOpacity 
-            onPress={handleSubmit(onSubmit)}
+            onPress={handleSubmit(onSubmit, (errs) => {
+              Alert.alert('Incomplete Form', 'Please fill out all required fields correctly.');
+            })}
             disabled={isSimulatingAI}
             activeOpacity={0.8}
             style={[styles.submitBtn, isSimulatingAI && { opacity: 0.7 }]}

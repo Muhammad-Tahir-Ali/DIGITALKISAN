@@ -11,21 +11,17 @@ import orderService from '@/services/order.service';
 
 const { width } = Dimensions.get('window');
 
-const MOCK_ADDRESSES = [
-  { id: '1', label: 'Home Delivery', address: 'House 42, Street 5, DHA Phase 6, Lahore', icon: 'home' },
-  { id: '2', label: 'Godown / Office', address: 'Office 12, Arfa Tower, Ferozepur Road, Lahore', icon: 'briefcase' },
-];
-
-const MOCK_PAYMENTS = [
-  { id: 'wallet', label: 'DigitalKisan Wallet', subtitle: 'Balance: ₨ 15,400', emoji: '💳', type: 'escrow' },
-  { id: 'jazzcash', label: 'JazzCash Escrow', subtitle: 'Secure Mobile Payment', emoji: '🟡', type: 'escrow' },
-  { id: 'easypaisa', label: 'Easypaisa Escrow', subtitle: 'Secure Mobile Payment', emoji: '🟢', type: 'escrow' },
+const PAYMENT_OPTIONS = [
+  { id: 'wallet', label: 'DigitalKisan Wallet', subtitle: 'Balance: Check wallet', icon: 'credit-card', type: 'escrow' },
+  { id: 'jazzcash', label: 'JazzCash Escrow', subtitle: 'Secure Mobile Payment', icon: 'smartphone', type: 'escrow' },
+  { id: 'easypaisa', label: 'Easypaisa Escrow', subtitle: 'Secure Mobile Payment', icon: 'zap', type: 'escrow' },
 ];
 
 export default function CheckoutScreen() {
   const router = useRouter();
   const [step, setStep] = useState(1);
-  const [selectedAddress, setSelectedAddress] = useState('1');
+  const [deliveryAddress, setDeliveryAddress] = useState('');
+  const [deliveryNote, setDeliveryNote] = useState('');
   const [selectedPayment, setSelectedPayment] = useState('wallet');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -38,6 +34,14 @@ export default function CheckoutScreen() {
   const grandTotal = totalPrice + delivery + tax;
 
   const handleNext = async () => {
+    if (step === 1) {
+      if (!deliveryAddress.trim()) {
+        Alert.alert('Address Required', 'Please enter your delivery address.');
+        return;
+      }
+      setStep(2);
+      return;
+    }
     if (step < 3) {
       setStep(step + 1);
       return;
@@ -46,14 +50,11 @@ export default function CheckoutScreen() {
     // Step 3: Submit — Create real orders for each cart item
     setIsSubmitting(true);
     try {
-      const address = MOCK_ADDRESSES.find(a => a.id === selectedAddress)!;
-
-      // Create one order per cart item (each item can be from a different farmer)
       const orderPromises = items.map(item =>
         orderService.create({
           productId: item.productId,
           quantity: item.quantity,
-          shippingAddress: { address: address.address },
+          shippingAddress: { address: deliveryAddress.trim() },
           paymentGatewayRef: `${selectedPayment.toUpperCase()}_${Date.now()}`,
         })
       );
@@ -118,39 +119,31 @@ export default function CheckoutScreen() {
         {/* ── STEP 1: DELIVERY ── */}
         {step === 1 && (
           <View>
-            <Text style={styles.stepTitle}>Where should we deliver?</Text>
-            
-            {MOCK_ADDRESSES.map(addr => (
-              <TouchableOpacity 
-                key={addr.id}
-                onPress={() => setSelectedAddress(addr.id)}
-                style={[styles.addressCard, selectedAddress === addr.id && styles.addressCardActive]}
-              >
-                <View style={[styles.addressIcon, { backgroundColor: selectedAddress === addr.id ? Colors.agri.sabz : '#F8FAFC' }]}>
-                  <Feather name={addr.icon as any} size={20} color={selectedAddress === addr.id ? '#fff' : '#94A3B8'} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.addressLabel}>{addr.label}</Text>
-                  <Text style={styles.addressSub}>{addr.address}</Text>
-                </View>
-                <View style={[styles.radioCircle, selectedAddress === addr.id && styles.radioActive]}>
-                  {selectedAddress === addr.id && <View style={styles.radioInner} />}
-                </View>
-              </TouchableOpacity>
-            ))}
+            <Text style={styles.stepTitle}>Delivery Address</Text>
 
-            <TouchableOpacity style={styles.addNewAddr}>
-              <Feather name="plus" size={18} color={Colors.agri.sabz} />
-              <Text style={styles.addNewAddrText}>Add New Destination</Text>
-            </TouchableOpacity>
+            <View style={styles.addressInputWrap}>
+              <Feather name="map-pin" size={20} color={Colors.agri.sabz} style={{ marginRight: 12 }} />
+              <TextInput
+                style={styles.addressInput}
+                placeholder="Enter full delivery address..."
+                placeholderTextColor="#94A3B8"
+                value={deliveryAddress}
+                onChangeText={setDeliveryAddress}
+                multiline
+                numberOfLines={3}
+                textAlignVertical="top"
+              />
+            </View>
 
             <View style={styles.noteBox}>
-              <Text style={styles.noteLabel}>Delivery Instructions</Text>
-              <TextInput 
+              <Text style={styles.noteLabel}>Delivery Instructions (optional)</Text>
+              <TextInput
                 placeholder="e.g. Call my brother at 03xx-xxxxxx..."
                 placeholderTextColor="#94A3B8"
                 multiline
                 style={styles.noteInput}
+                value={deliveryNote}
+                onChangeText={setDeliveryNote}
               />
             </View>
           </View>
@@ -166,20 +159,20 @@ export default function CheckoutScreen() {
 
             <Text style={styles.stepTitle}>Select Escrow Provider</Text>
             
-            {MOCK_PAYMENTS.map(pay => (
+            {PAYMENT_OPTIONS.map(pay => (
               <TouchableOpacity 
                 key={pay.id}
                 onPress={() => setSelectedPayment(pay.id)}
                 style={[styles.payCard, selectedPayment === pay.id && styles.payCardActive]}
               >
                 <View style={styles.payEmojiWrap}>
-                  <Text style={{ fontSize: 24 }}>{pay.emoji}</Text>
+                  <Feather name={pay.icon as any} size={22} color={selectedPayment === pay.id ? Colors.agri.sabz : '#94A3B8'} />
                 </View>
                 <View style={{ flex: 1 }}>
                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                       <Text style={styles.payLabel}>{pay.label}</Text>
                       <View style={styles.verifiedPayBadge}>
-                         <Text style={styles.verifiedPayText}>Verified</Text>
+                         <Text style={styles.verifiedPayText}>Escrow</Text>
                       </View>
                    </View>
                    <Text style={styles.paySub}>{pay.subtitle}</Text>
@@ -201,8 +194,8 @@ export default function CheckoutScreen() {
                <View style={styles.summaryHeader}>
                   <Text style={styles.summaryTitle}>Bill Summary</Text>
                   <View style={styles.paymentMethodTag}>
-                     <Text style={{ fontSize: 14 }}>{MOCK_PAYMENTS.find(p => p.id === selectedPayment)?.emoji}</Text>
-                     <Text style={styles.paymentMethodName}>{MOCK_PAYMENTS.find(p => p.id === selectedPayment)?.label}</Text>
+                     <Feather name={PAYMENT_OPTIONS.find(p => p.id === selectedPayment)?.icon as any} size={14} color="#475569" />
+                     <Text style={styles.paymentMethodName}>{PAYMENT_OPTIONS.find(p => p.id === selectedPayment)?.label}</Text>
                   </View>
                </View>
 
@@ -240,7 +233,7 @@ export default function CheckoutScreen() {
                </View>
                <View style={{ flex: 1 }}>
                   <Text style={styles.destTitle}>Shipment Destination</Text>
-                  <Text style={styles.destVal} numberOfLines={1}>{MOCK_ADDRESSES.find(a => a.id === selectedAddress)?.address}</Text>
+                  <Text style={styles.destVal} numberOfLines={2}>{deliveryAddress || 'No address entered'}</Text>
                </View>
                <TouchableOpacity onPress={() => setStep(1)}>
                   <Text style={styles.editLink}>Change</Text>
@@ -313,6 +306,17 @@ const styles = StyleSheet.create({
 
   scrollContent: { paddingHorizontal: 24, paddingBottom: 140 },
   stepTitle: { fontSize: 22, fontWeight: '900', color: '#111827', marginBottom: 24, letterSpacing: -0.5 },
+
+  // Address input
+  addressInputWrap: {
+    flexDirection: 'row', alignItems: 'flex-start', backgroundColor: '#fff',
+    padding: 16, borderRadius: 20, marginBottom: 20,
+    borderWidth: 1.5, borderColor: Colors.agri.sabz,
+  },
+  addressInput: {
+    flex: 1, fontSize: 14, fontWeight: '600', color: '#1E293B',
+    minHeight: 80, textAlignVertical: 'top', paddingTop: 2,
+  },
 
   // Addresses
   addressCard: {

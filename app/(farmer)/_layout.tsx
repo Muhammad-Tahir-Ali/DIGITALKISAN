@@ -2,6 +2,7 @@ import { Tabs, Redirect } from 'expo-router';
 import { Platform } from 'react-native';
 import { Colors } from '@/constants/colors';
 import { useAuthStore } from '@/store/authStore';
+import { Feather } from '@expo/vector-icons';
 
 export default function FarmerLayout() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
@@ -38,29 +39,33 @@ export default function FarmerLayout() {
     >
       <Tabs.Screen
         name="dashboard"
-        options={{ title: 'Dashboard', tabBarIcon: ({ color }) => <TabIcon icon="🏠" color={color} /> }}
+        options={{ title: 'Dashboard', tabBarIcon: ({ color }) => <Feather name="home" size={22} color={color} /> }}
       />
       <Tabs.Screen
         name="products/index"
-        options={{ title: 'Products', tabBarIcon: ({ color }) => <TabIcon icon="🌾" color={color} /> }}
+        options={{ title: 'Products', tabBarIcon: ({ color }) => <Feather name="grid" size={22} color={color} /> }}
       />
       <Tabs.Screen
         name="orders/index"
-        options={{ title: 'Orders', tabBarIcon: ({ color }) => <TabIcon icon="📦" color={color} /> }}
+        options={{ title: 'Orders', tabBarIcon: ({ color }) => <Feather name="package" size={22} color={color} /> }}
       />
       <Tabs.Screen
         name="wallet/index"
-        options={{ title: 'Wallet', tabBarIcon: ({ color }) => <TabIcon icon="💰" color={color} /> }}
+        options={{ title: 'Wallet', tabBarIcon: ({ color }) => <Feather name="dollar-sign" size={22} color={color} /> }}
       />
       <Tabs.Screen
         name="profile"
-        options={{ title: 'Profile', tabBarIcon: ({ color }) => <TabIcon icon="👤" color={color} /> }}
+        options={{ title: 'Profile', tabBarIcon: ({ color }) => <Feather name="user" size={22} color={color} /> }}
+      />
+      {/* Hidden Screens */}
+      <Tabs.Screen
+        name="products/add"
+        options={{ href: null }}
+      />
+      <Tabs.Screen
+        name="orders/[id]"
+        options={{ href: null }}
       />
     </Tabs>
   );
-}
-
-function TabIcon({ icon, color }: { icon: string; color: string }) {
-  const { Text } = require('react-native');
-  return <Text style={{ fontSize: 20, opacity: color === Colors.primary ? 1 : 0.5 }}>{icon}</Text>;
 }
