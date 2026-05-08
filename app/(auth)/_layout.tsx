@@ -10,9 +10,9 @@ export default function AuthLayout() {
         animation: 'slide_from_right',
       }}
     >
+      <Stack.Screen name="role-select" />
       <Stack.Screen name="login" />
       <Stack.Screen name="register" />
-      <Stack.Screen name="role-select" />
       <Stack.Screen name="verify-email" />
     </Stack>
   );

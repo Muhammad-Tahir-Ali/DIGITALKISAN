@@ -3,8 +3,14 @@ import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 import { useAuthStore } from '@/store/authStore';
 
+// Use your machine's LAN IP so physical Android devices on the same WiFi can reach the backend.
+// 10.0.2.2 only works inside the Android Emulator; localhost only works on web.
+const DEV_MACHINE_IP = '192.168.100.30';
+
 export const BASE_URL = __DEV__
-  ? (Platform.OS === 'web' ? 'http://localhost:3000/api/v1' : 'http://10.0.2.2:3000/api/v1')
+  ? (Platform.OS === 'web'
+      ? 'http://localhost:3000/api/v1'
+      : `http://${DEV_MACHINE_IP}:3000/api/v1`)
   : 'https://api.digitalkisan.pk/v1';
 
 const api = axios.create({
