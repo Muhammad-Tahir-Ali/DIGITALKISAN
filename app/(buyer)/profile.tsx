@@ -6,6 +6,7 @@ import {
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/hooks/useAuth';
 import { Colors } from '@/constants/colors';
 import userService from '@/services/user.service';
@@ -66,6 +67,7 @@ function SectionCard({ title, children }: { title: string; children: React.React
 export default function BuyerProfile() {
   const { user, logout } = useAuth();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [walletBalance, setWalletBalance] = useState<string>('...');
 
   useEffect(() => {
@@ -104,7 +106,7 @@ export default function BuyerProfile() {
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
 
         {/* ── HERO HEADER ──────────────────────────────────────── */}
-        <View style={styles.heroContainer}>
+        <View style={[styles.heroContainer, { paddingTop: insets.top + 24 }]}>
           <LinearGradient
             colors={['#052e16', '#14532d', '#166534']}
             start={{ x: 0, y: 0 }}
@@ -168,8 +170,8 @@ export default function BuyerProfile() {
           {/* ── ORDERS & WALLET ──────────────────────────────────── */}
           <SectionCard title="Orders & Wallet">
             <SettingsRow icon="package" label="My Orders" onPress={() => router.push('/(buyer)/orders' as any)} />
-            <SettingsRow icon="credit-card" label="Wallet Balance" value={walletBalance} onPress={handleComingSoon} />
-            <SettingsRow icon="clock" label="Transaction History" onPress={handleComingSoon} />
+            <SettingsRow icon="credit-card" label="Wallet Balance" value={walletBalance} onPress={() => router.push('/(buyer)/wallet/topup' as any)} />
+            <SettingsRow icon="clock" label="Transaction History" onPress={() => router.push('/(buyer)/wallet/history')} />
             <SettingsRow icon="shield" label="Escrow Status" badge="1 Active" onPress={handleComingSoon} />
           </SectionCard>
 
@@ -206,7 +208,6 @@ const styles = StyleSheet.create({
 
   // Hero
   heroContainer: {
-    paddingTop: Platform.OS === 'ios' ? 60 : 48,
     paddingBottom: 32,
     paddingHorizontal: 24,
     alignItems: 'center',

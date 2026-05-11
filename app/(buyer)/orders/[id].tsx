@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Modal } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Feather, FontAwesome5 } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '@/constants/colors';
-import { Button } from '@/components/ui';
+import { Button, SkeletonLoader } from '@/components/ui';
 import { EscrowBadge } from '@/components/checkout/EscrowBadge';
 import { StatusTimeline, TimelineStep } from '@/components/checkout/StatusTimeline';
 import orderService, { Order } from '@/services/order.service';
@@ -11,6 +12,7 @@ import orderService, { Order } from '@/services/order.service';
 export default function OrderDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -28,10 +30,33 @@ export default function OrderDetailScreen() {
     if (id) fetchOrder();
   }, [id]);
 
-  if (loading || !order) {
+  if (loading) {
     return (
-      <View className="flex-1 bg-background justify-center items-center">
-        <Text>Loading...</Text>
+      <View className="flex-1 bg-background" style={{ paddingTop: insets.top }}>
+        <View className="px-6 mb-4 flex-row items-center border-b border-gray-100 pb-4 pt-4">
+          <TouchableOpacity onPress={() => router.back()} className="w-10 h-10 items-center justify-center rounded-xl bg-gray-50 mr-4">
+            <Feather name="arrow-left" size={20} color={Colors.textPrimary} />
+          </TouchableOpacity>
+          <Text className="text-xl font-bold text-textPrimary">Order Details</Text>
+        </View>
+        <View style={{ paddingHorizontal: 20, paddingTop: 16, gap: 12 }}>
+          <SkeletonLoader.Box height={80} borderRadius={16} />
+          <SkeletonLoader.Box height={160} borderRadius={16} />
+          <SkeletonLoader.Box height={120} borderRadius={16} />
+          <SkeletonLoader.Box height={100} borderRadius={16} />
+        </View>
+      </View>
+    );
+  }
+
+  if (!order) {
+    return (
+      <View className="flex-1 bg-background justify-center items-center p-6">
+        <Feather name="alert-circle" size={48} color={Colors.error} />
+        <Text className="text-lg font-bold text-textPrimary mt-4">Order not found</Text>
+        <TouchableOpacity onPress={() => router.back()} className="mt-6 bg-primary px-6 py-3 rounded-xl">
+          <Text className="text-white font-bold">Go Back</Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -68,7 +93,7 @@ export default function OrderDetailScreen() {
   };
 
   return (
-    <View className="flex-1 bg-background pt-12">
+    <View className="flex-1 bg-background" style={{ paddingTop: insets.top }}>
       {/* ── HEADER ── */}
       <View className="px-6 mb-4 flex-row items-center justify-between border-b border-gray-100 pb-4">
         <View className="flex-row items-center">

@@ -1,15 +1,20 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  View, Text, ScrollView, StyleSheet, Platform,
-  ActivityIndicator, TouchableOpacity, RefreshControl,
+  View, Text, ScrollView, StyleSheet,
+  TouchableOpacity, RefreshControl,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '@/constants/colors';
+import { SkeletonLoader } from '@/components/ui';
 import userService from '@/services/user.service';
 import orderService, { Order } from '@/services/order.service';
 
 export default function FarmerWalletScreen() {
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [wallet, setWallet] = useState<{
     availableBalance: number;
     totalEarned: number;
@@ -40,14 +45,6 @@ export default function FarmerWalletScreen() {
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
-  if (loading) {
-    return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F8FAFB' }}>
-        <ActivityIndicator size="large" color={Colors.primary} />
-      </View>
-    );
-  }
-
   return (
     <ScrollView
       style={styles.root}
@@ -56,10 +53,18 @@ export default function FarmerWalletScreen() {
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => fetchAll(true)} colors={[Colors.primary]} />}
     >
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
         <Text style={styles.heading}>My Wallet</Text>
         <Text style={styles.subheading}>Escrow-protected earnings</Text>
       </View>
+
+      {loading ? (
+        <View style={{ paddingHorizontal: 20, paddingTop: 20, gap: 12 }}>
+          <SkeletonLoader.Box height={180} borderRadius={24} />
+          <SkeletonLoader.Box height={80} borderRadius={16} />
+          <SkeletonLoader.OrderList count={3} />
+        </View>
+      ) : <>
 
       {/* Balance Card */}
       <LinearGradient
@@ -101,19 +106,22 @@ export default function FarmerWalletScreen() {
         </View>
       </View>
 
-      {/* Withdrawal Notice */}
+      {/* Withdrawal Section */}
       <View style={styles.withdrawCard}>
         <View style={styles.withdrawRow}>
           <Feather name="download" size={18} color={Colors.primary} />
           <Text style={styles.withdrawTitle}>Withdraw Funds</Text>
         </View>
         <Text style={styles.withdrawDesc}>
-          JazzCash / Easypaisa payouts are being integrated. You'll receive payments
-          directly to your registered mobile wallet after each confirmed delivery.
+          Request your available balance to be sent to your JazzCash, Easypaisa, or Bank account.
         </Text>
-        <View style={styles.comingSoonBadge}>
-          <Text style={styles.comingSoonText}>Coming Soon</Text>
-        </View>
+        <TouchableOpacity 
+          style={styles.withdrawActionBtn}
+          onPress={() => router.push('/(farmer)/wallet/withdraw' as any)}
+        >
+          <Text style={styles.withdrawActionText}>Withdraw Now</Text>
+          <Feather name="arrow-right" size={14} color="#fff" />
+        </TouchableOpacity>
       </View>
 
       {/* Recent Transactions */}
@@ -142,6 +150,8 @@ export default function FarmerWalletScreen() {
           </View>
         ))
       )}
+
+      </> }
     </ScrollView>
   );
 }
@@ -151,7 +161,6 @@ const styles = StyleSheet.create({
   content: { paddingBottom: 80 },
   header: {
     paddingHorizontal: 20,
-    paddingTop: Platform.OS === 'ios' ? 60 : 48,
     paddingBottom: 20,
     backgroundColor: '#fff',
     borderBottomWidth: 1, borderBottomColor: '#F1F5F9',
@@ -187,13 +196,19 @@ const styles = StyleSheet.create({
   },
   withdrawRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
   withdrawTitle: { fontSize: 15, fontWeight: '800', color: '#111827' },
-  withdrawDesc: { fontSize: 12, color: Colors.textSecondary, lineHeight: 18 },
-  comingSoonBadge: {
-    alignSelf: 'flex-start', marginTop: 10,
-    backgroundColor: Colors.primaryLight, borderRadius: 20,
-    paddingHorizontal: 12, paddingVertical: 5,
+  withdrawDesc: { fontSize: 12, color: Colors.textSecondary, lineHeight: 18, marginBottom: 12 },
+  withdrawActionBtn: {
+    backgroundColor: Colors.primary, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 10,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, alignSelf: 'flex-start',
   },
-  comingSoonText: { fontSize: 11, fontWeight: '800', color: Colors.primary },
+  withdrawActionText: { fontSize: 13, fontWeight: '800', color: '#fff' },
+  historyActionBtn: {
+    backgroundColor: '#F1F5F9',
+    marginTop: 8,
+  },
+  historyActionText: {
+    color: Colors.textPrimary,
+  },
 
   sectionTitle: { fontSize: 16, fontWeight: '800', color: '#111827', marginHorizontal: 20, marginBottom: 12 },
   emptyCard: {

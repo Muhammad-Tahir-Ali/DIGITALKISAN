@@ -1,20 +1,21 @@
 import React from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Dimensions } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Dimensions, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '@/constants/colors';
 import { useAuthStore } from '@/store/authStore';
 import userService, { DashboardStats } from '@/services/user.service';
 import orderService, { Order } from '@/services/order.service';
 import notificationService, { Notification } from '@/services/notification.service';
 import { SkeletonLoader, StatusBadge } from '@/components/ui';
-import { Alert } from 'react-native';
 
 const { width } = Dimensions.get('window');
 
 export default function FarmerDashboard() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const user = useAuthStore((s) => s.user);
   const setRole = useAuthStore((s) => s.setRole);
 
@@ -22,9 +23,11 @@ export default function FarmerDashboard() {
   const [orders, setOrders] = React.useState<Order[]>([]);
   const [notifications, setNotifications] = React.useState<Notification[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     const fetchData = async () => {
+      setError(null);
       try {
         const [statsData, ordersData, notifsData] = await Promise.all([
           userService.getDashboardStats(),
@@ -34,8 +37,8 @@ export default function FarmerDashboard() {
         setStats(statsData);
         setOrders(ordersData);
         setNotifications(notifsData);
-      } catch (error) {
-        console.error('Failed to load dashboard data:', error);
+      } catch (e: any) {
+        setError(e?.response?.data?.message ?? 'Failed to load dashboard. Pull down to retry.');
       } finally {
         setLoading(false);
       }
@@ -85,9 +88,16 @@ export default function FarmerDashboard() {
 
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-      
+
+      {error && (
+        <View style={styles.errorBanner}>
+          <Feather name="alert-circle" size={14} color={Colors.error} />
+          <Text style={styles.errorBannerText}>{error}</Text>
+        </View>
+      )}
+
       {/* ── 1. PREMIUM HEADER ────────────────────────────────────── */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
         <LinearGradient
           colors={['#064e3b', '#065f46', '#059669']}
           start={{ x: 0, y: 0 }}
@@ -239,8 +249,12 @@ function QuickAction({ icon, label, color, onPress }: { icon: string; label: str
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8FAFB' },
+  errorBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: Colors.errorLight, paddingHorizontal: 20, paddingVertical: 10,
+  },
+  errorBannerText: { flex: 1, fontSize: 13, color: Colors.error, fontWeight: '600' },
   header: {
-    paddingTop: 60,
     paddingBottom: 60,
     paddingHorizontal: 24,
     position: 'relative',

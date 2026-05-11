@@ -1,11 +1,13 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity, StyleSheet,
   Platform, ActivityIndicator, RefreshControl, Alert,
 } from 'react-native';
+import * as Location from 'expo-location';
 import { Feather } from '@expo/vector-icons';
 import { Colors } from '@/constants/colors';
 import orderService, { Order, OrderStatus } from '@/services/order.service';
+import { socketService } from '@/services/socket.service';
 
 const STATUS_LABELS: Record<string, { label: string; bg: string; text: string; dot: string }> = {
   in_transit: { label: 'In Transit',  bg: '#DBEAFE', text: '#1E40AF', dot: '#3B82F6' },
@@ -81,6 +83,7 @@ export default function ActiveDeliveries() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'active' | 'done'>('active');
+  const locationWatcher = useRef<Location.LocationSubscription | null>(null);
 
   const fetchOrders = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true); else setLoading(true);
@@ -97,6 +100,43 @@ export default function ActiveDeliveries() {
   }, []);
 
   useEffect(() => { fetchOrders(); }, [fetchOrders]);
+
+  // Start broadcasting GPS for all in_transit orders
+  useEffect(() => {
+    const inTransitOrders = orders.filter(o => o.status === 'in_transit');
+    if (inTransitOrders.length === 0) {
+      locationWatcher.current?.remove();
+      locationWatcher.current = null;
+      socketService.disconnect();
+      return;
+    }
+
+    let active = true;
+
+    (async () => {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted' || !active) return;
+
+      socketService.connect();
+      inTransitOrders.forEach(o => socketService.joinOrder(o._id));
+
+      locationWatcher.current = await Location.watchPositionAsync(
+        { accuracy: Location.Accuracy.High, timeInterval: 5000, distanceInterval: 10 },
+        ({ coords }) => {
+          inTransitOrders.forEach(o =>
+            socketService.emitLocation(o._id, coords.latitude, coords.longitude)
+          );
+        }
+      );
+    })();
+
+    return () => {
+      active = false;
+      locationWatcher.current?.remove();
+      locationWatcher.current = null;
+      socketService.disconnect();
+    };
+  }, [orders]);
 
   const handleMarkDelivered = (order: Order) => {
     Alert.alert(

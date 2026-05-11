@@ -1,10 +1,11 @@
 import React, { useCallback } from 'react';
 import {
   View, Text, TouchableOpacity, FlatList,
-  StyleSheet, Platform, Alert,
+  StyleSheet, Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '@/constants/colors';
 import { useCartStore, CartItem } from '@/store/cartStore';
 
@@ -115,6 +116,7 @@ function SummaryRow({ label, value, bold }: { label: string; value: string; bold
 // ── Main Screen ───────────────────────────────────────────────────────────────
 export default function CartScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const items = useCartStore(s => s.items);
   const totalPrice = useCartStore(s => s.totalPrice);
   const clearCart = useCartStore(s => s.clearCart);
@@ -132,7 +134,7 @@ export default function CartScreen() {
   return (
     <View style={styles.root}>
       {/* Custom Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Feather name="arrow-left" size={18} color={Colors.textPrimary} />
         </TouchableOpacity>
@@ -217,7 +219,6 @@ const styles = StyleSheet.create({
   // Custom Header
   header: {
     flexDirection: 'row', alignItems: 'center',
-    paddingTop: Platform.OS === 'ios' ? 58 : 44,
     paddingHorizontal: 20, paddingBottom: 16,
     backgroundColor: '#fff',
     borderBottomWidth: 1, borderBottomColor: '#F1F5F9',

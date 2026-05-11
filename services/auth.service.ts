@@ -67,6 +67,14 @@ const authService = {
   },
 
   /**
+   * Update current user profile (name, phone, etc.)
+   */
+  updateMe: async (payload: { name?: string; phone?: string }): Promise<User> => {
+    const { data } = await api.patch<{ status: string; data: { user: User } }>('/users/me', payload);
+    return data.data.user;
+  },
+
+  /**
    * Create a new account
    * This now returns a pending status, not the auth token
    */

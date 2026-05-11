@@ -2,7 +2,6 @@ import { Tabs, Redirect } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { View, Text, StyleSheet, Platform } from 'react-native';
 import { Colors } from '@/constants/colors';
-import { TopDotsMenu } from '@/components/navigation/TopDotsMenu';
 import { useAuthStore } from '@/store/authStore';
 import { useCartStore } from '@/store/cartStore';
 
@@ -93,7 +92,6 @@ export default function BuyerLayout() {
         name="checkout"
         options={{
           href: null,
-          headerShown: true,
           title: 'Checkout'
         }}
       />
@@ -135,6 +133,27 @@ export default function BuyerLayout() {
         name="products/detail/[id]"
         options={{
           href: null,
+        }}
+      />
+      <Tabs.Screen
+        name="wallet/index"
+        options={{
+          href: null,
+          title: 'Wallet'
+        }}
+      />
+      <Tabs.Screen
+        name="wallet/topup"
+        options={{
+          href: null,
+          title: 'Add Money'
+        }}
+      />
+      <Tabs.Screen
+        name="wallet/history"
+        options={{
+          href: null,
+          title: 'History'
         }}
       />
     </Tabs>

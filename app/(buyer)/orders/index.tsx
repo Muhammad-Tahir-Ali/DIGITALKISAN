@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity,
-  StyleSheet, Platform, ActivityIndicator, RefreshControl,
+  StyleSheet, RefreshControl,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '@/constants/colors';
+import { SkeletonLoader } from '@/components/ui';
 import orderService, { Order, OrderStatus as ApiOrderStatus } from '@/services/order.service';
 
 type OrderStatus = 'Active' | 'Delivered' | 'Cancelled';
@@ -46,6 +48,7 @@ const toUiStatus = (status: ApiOrderStatus): OrderStatus => {
 
 export default function BuyerOrdersScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<OrderStatus>('Active');
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -80,7 +83,7 @@ export default function BuyerOrdersScreen() {
   return (
     <View style={styles.root}>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
         <View>
           <Text style={styles.heading}>My Orders</Text>
           <Text style={styles.subheading}>Track and manage your purchases</Text>
@@ -115,8 +118,8 @@ export default function BuyerOrdersScreen() {
 
       {/* Loading */}
       {loading && (
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <ActivityIndicator size="large" color={Colors.primary} />
+        <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>
+          <SkeletonLoader.OrderList count={5} />
         </View>
       )}
 
@@ -184,7 +187,6 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end',
     paddingHorizontal: 20,
-    paddingTop: Platform.OS === 'ios' ? 60 : 48,
     paddingBottom: 16,
     backgroundColor: '#fff',
     borderBottomWidth: 1, borderBottomColor: '#F1F5F9',

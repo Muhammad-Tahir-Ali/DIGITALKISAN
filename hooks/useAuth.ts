@@ -165,6 +165,28 @@ export function useAuth() {
     store.setRole(role);
   }, []);
 
+  const updateUser = useCallback(async (payload: { name?: string; phone?: string }) => {
+    const oldUser = store.user;
+    try {
+      // Optimistic update
+      if (oldUser) {
+        store.hydrate({ ...oldUser, ...payload }, store.token!, store.refreshToken!);
+      }
+      
+      const updatedUser = await authService.updateMe(payload);
+      
+      // Final update with server response
+      store.hydrate(updatedUser, store.token!, store.refreshToken!);
+      return updatedUser;
+    } catch (err) {
+      // Revert on error
+      if (oldUser) {
+        store.hydrate(oldUser, store.token!, store.refreshToken!);
+      }
+      throw err;
+    }
+  }, []);
+
   return {
     user: store.user as User | null,
     token: store.token,
@@ -178,5 +200,6 @@ export function useAuth() {
     logout,
     rehydrate,
     selectRole,
+    updateUser,
   };
 }

@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity,
-  StyleSheet, Platform, ActivityIndicator,
-  RefreshControl,
+  StyleSheet, ActivityIndicator,
+  RefreshControl, Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '@/constants/colors';
 import orderService, { Order, OrderStatus } from '@/services/order.service';
 
@@ -21,13 +22,14 @@ const STATUS_CONFIG: Record<string, { label: string; bg: string; text: string; d
 
 type TabKey = 'new' | 'active' | 'done';
 const TABS: { key: TabKey; label: string; statuses: OrderStatus[] }[] = [
-  { key: 'new',    label: 'New',     statuses: ['pending', 'paid'] },
-  { key: 'active', label: 'Active',  statuses: ['bidding', 'in_transit'] },
+  { key: 'new',    label: 'New',     statuses: ['pending', 'paid', 'bidding'] },
+  { key: 'active', label: 'Active',  statuses: ['in_transit'] },
   { key: 'done',   label: 'Done',    statuses: ['delivered', 'cancelled', 'disputed'] },
 ];
 
 export default function FarmerOrdersScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [orders, setOrders]     = useState<Order[]>([]);
   const [loading, setLoading]   = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -148,7 +150,7 @@ export default function FarmerOrdersScreen() {
   return (
     <View style={styles.root}>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
         <View>
           <Text style={styles.heading}>My Orders</Text>
           <Text style={styles.subheading}>Manage incoming orders</Text>
@@ -218,7 +220,6 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end',
     paddingHorizontal: 20,
-    paddingTop: Platform.OS === 'ios' ? 60 : 48,
     paddingBottom: 16,
     backgroundColor: '#fff',
     borderBottomWidth: 1, borderBottomColor: '#F1F5F9',

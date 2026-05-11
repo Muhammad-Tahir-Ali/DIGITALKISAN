@@ -1,8 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, FlatList, Switch, ActivityIndicator, RefreshControl, Alert, Image, Platform } from 'react-native';
+import {
+  View, Text, FlatList, TouchableOpacity, StyleSheet,
+  RefreshControl, Alert, Image, Platform,
+} from 'react-native';
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '@/constants/colors';
+import { SkeletonLoader } from '@/components/ui';
 import productService, { Product } from '@/services/product.service';
 
 const FILTER_TABS = ['All', 'Active', 'Low Stock', 'Out of Stock'];
@@ -10,6 +15,7 @@ const CATEGORIES = ['All', 'grains', 'vegetables', 'fruits', 'dairy', 'livestock
 
 export default function MyProductsScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState('All');
   const [activeCategory, setActiveCategory] = useState('All');
   const [products, setProducts] = useState<Product[]>([]);
@@ -45,13 +51,11 @@ export default function MyProductsScreen() {
     };
 
     if (Platform.OS === 'web') {
-      if (window.confirm('Are you sure? This will hide the product.')) {
-        doDelete();
-      }
+      if (window.confirm('Are you sure? This will hide the product.')) doDelete();
     } else {
       Alert.alert('Delete Product', 'Are you sure? This will hide the product.', [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete', style: 'destructive', onPress: doDelete }
+        { text: 'Delete', style: 'destructive', onPress: doDelete },
       ]);
     }
   };
@@ -65,61 +69,75 @@ export default function MyProductsScreen() {
     return filtered;
   };
 
-  const filteredProducts = getFilteredProducts();
-
   const renderProductCard = ({ item }: { item: Product }) => {
     const isOut = item.availableQuantity === 0 || item.status === 'sold_out';
     const isLow = item.availableQuantity > 0 && item.availableQuantity <= 50;
+    const isHidden = item.status === 'hidden';
 
     return (
-      <View className={`bg-white rounded-2xl mb-4 shadow-sm border ${item.status === 'hidden' ? 'border-gray-200 bg-gray-50' : 'border-gray-100'} p-4`}>
-        <View className="flex-row">
-          <View className={`w-20 h-20 rounded-xl items-center justify-center mr-4 overflow-hidden ${item.status === 'hidden' ? 'bg-gray-200' : 'bg-green-50'}`}>
+      <View style={[styles.card, isHidden && styles.cardHidden]}>
+        <View style={styles.cardRow}>
+          <View style={[styles.thumb, isHidden && styles.thumbHidden]}>
             {item.images && item.images.length > 0 ? (
-              <Image source={{ uri: item.images[0] }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+              <Image source={{ uri: item.images[0] }} style={styles.thumbImage} resizeMode="cover" />
             ) : (
-              <Text className="text-4xl">🌾</Text>
+              <Text style={styles.thumbEmoji}>🌾</Text>
             )}
           </View>
-          <View className="flex-1 justify-between py-0.5">
-            <View className="flex-row justify-between items-start">
-              <View className="flex-1 pr-2">
-                <Text className={`font-bold text-base ${item.status === 'hidden' ? 'text-gray-400' : 'text-textPrimary'}`}>{item.title}</Text>
-                <Text className="text-primary font-bold text-sm mt-0.5">₨{item.pricePerUnit}<Text className="text-[10px] text-textSecondary font-medium">/{item.unit}</Text></Text>
+          <View style={styles.cardBody}>
+            <View style={styles.cardTopRow}>
+              <View style={styles.cardTitleBlock}>
+                <Text style={[styles.productName, isHidden && styles.productNameHidden]} numberOfLines={1}>
+                  {item.title}
+                </Text>
+                <Text style={styles.productPrice}>
+                  ₨{item.pricePerUnit}
+                  <Text style={styles.productUnit}>/{item.unit}</Text>
+                </Text>
               </View>
               {item.status === 'pending_ai' && (
-                <View className="bg-yellow-100 px-2 py-1 rounded">
-                  <Text className="text-[10px] font-bold text-yellow-700">Pending AI ⏳</Text>
+                <View style={styles.badgePending}>
+                  <Text style={styles.badgePendingText}>AI ⏳</Text>
                 </View>
               )}
               {item.status === 'rejected' && (
-                <View className="bg-red-100 px-2 py-1 rounded">
-                  <Text className="text-[10px] font-bold text-red-700">Rejected ❌</Text>
+                <View style={styles.badgeRejected}>
+                  <Text style={styles.badgeRejectedText}>Rejected ❌</Text>
                 </View>
               )}
             </View>
-            <View className="flex-row items-center mt-2">
-              <View className={`px-2 py-0.5 rounded mr-2 ${isOut ? 'bg-error-light' : isLow ? 'bg-warning-light' : 'bg-gray-100'}`}>
-                <Text className={`text-[10px] font-bold ${isOut ? 'text-error-dark' : isLow ? 'text-warning-dark' : 'text-textSecondary'}`}>
+            <View style={styles.tagRow}>
+              <View style={[
+                styles.stockTag,
+                isOut ? styles.stockTagOut : isLow ? styles.stockTagLow : styles.stockTagOk,
+              ]}>
+                <Text style={[
+                  styles.stockTagText,
+                  isOut ? styles.stockTagTextOut : isLow ? styles.stockTagTextLow : styles.stockTagTextOk,
+                ]}>
                   Stock: {item.availableQuantity} {item.unit}
                 </Text>
               </View>
-              <View className="px-2 py-0.5 rounded bg-gray-100">
-                <Text className="text-[10px] font-bold text-textSecondary capitalize">{item.category}</Text>
+              <View style={styles.categoryTag}>
+                <Text style={styles.categoryTagText}>{item.category}</Text>
               </View>
             </View>
           </View>
         </View>
-        <View className="flex-row justify-between items-center mt-4 pt-3 border-t border-gray-100">
-          <View className="flex-row items-center">
+
+        <View style={styles.cardFooter}>
+          <View style={styles.ratingRow}>
             <Feather name="star" size={12} color="#F59E0B" />
-            <Text className="text-[10px] text-textSecondary ml-1">{item.rating} ({item.ratingsQuantity} reviews)</Text>
+            <Text style={styles.ratingText}>{item.rating} ({item.ratingsQuantity} reviews)</Text>
           </View>
-          <View className="flex-row space-x-1 border border-gray-100 rounded-lg overflow-hidden bg-gray-50">
-            <TouchableOpacity className="p-2 border-r border-gray-100 bg-white" onPress={() => router.push({ pathname: '/(farmer)/products/add' as any, params: { productId: item._id } })}>
+          <View style={styles.actionBtns}>
+            <TouchableOpacity
+              style={styles.editBtn}
+              onPress={() => router.push({ pathname: '/(farmer)/products/add' as any, params: { productId: item._id } })}
+            >
               <Feather name="edit-2" size={14} color={Colors.primary} />
             </TouchableOpacity>
-            <TouchableOpacity className="p-2 bg-white" onPress={() => handleDelete(item._id)}>
+            <TouchableOpacity style={styles.deleteBtn} onPress={() => handleDelete(item._id)}>
               <Feather name="trash-2" size={14} color={Colors.error} />
             </TouchableOpacity>
           </View>
@@ -128,82 +146,197 @@ export default function MyProductsScreen() {
     );
   };
 
-  if (loading) {
-    return (
-      <View className="flex-1 bg-background items-center justify-center">
-        <ActivityIndicator size="large" color={Colors.primary} />
-        <Text className="text-textSecondary mt-4 font-semibold">Loading your products...</Text>
-      </View>
-    );
-  }
-
-  if (error) {
-    return (
-      <View className="flex-1 bg-background items-center justify-center p-6">
-        <Feather name="wifi-off" size={32} color={Colors.textSecondary} />
-        <Text className="text-textSecondary font-bold mt-4 text-center">{error}</Text>
-        <TouchableOpacity onPress={() => fetchProducts()} className="bg-primary px-6 py-3 rounded-xl mt-6">
-          <Text className="text-white font-bold">Retry</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
+  const filteredProducts = getFilteredProducts();
 
   return (
-    <View className="flex-1 bg-background pt-14">
-      <View className="px-6 mb-4 flex-row justify-between items-center">
-        <Text className="text-3xl font-bold text-textPrimary">My Products</Text>
+    <View style={[styles.root, { paddingTop: insets.top }]}>
+      <View style={styles.headerRow}>
+        <Text style={styles.heading}>My Products</Text>
       </View>
 
-      {/* Main Tabs */}
-      <View className="flex-row px-6 mb-4 border-b border-gray-100">
+      {/* Filter Tabs */}
+      <View style={styles.tabBar}>
         {FILTER_TABS.map(tab => (
-          <TouchableOpacity key={tab} onPress={() => setActiveTab(tab)} className="mr-6 pb-2 relative">
-            <Text className={`font-bold ${activeTab === tab ? 'text-primary' : 'text-textSecondary'}`}>{tab}</Text>
-            {activeTab === tab && <View className="absolute bottom-[-1px] left-0 right-0 h-0.5 bg-primary rounded-full" />}
+          <TouchableOpacity key={tab} onPress={() => setActiveTab(tab)} style={styles.tabItem}>
+            <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>{tab}</Text>
+            {activeTab === tab && <View style={styles.tabIndicator} />}
           </TouchableOpacity>
         ))}
       </View>
 
       {/* Category Chips */}
-      <View className="mb-4">
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 24 }}>
-          {CATEGORIES.map(cat => (
-            <TouchableOpacity key={cat} onPress={() => setActiveCategory(cat)}
-              className={`px-4 py-1.5 rounded-full mr-2 border ${activeCategory === cat ? 'bg-primary border-primary' : 'bg-white border-gray-200'}`}>
-              <Text className={`text-xs font-semibold capitalize ${activeCategory === cat ? 'text-white' : 'text-textSecondary'}`}>{cat}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </View>
-
       <FlatList
-        data={filteredProducts}
-        keyExtractor={item => item._id}
-        renderItem={renderProductCard}
-        contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 100 }}
-        showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => fetchProducts(true)} colors={[Colors.primary]} />}
-        ListEmptyComponent={
-          <View className="items-center justify-center py-20">
-            <Text className="text-6xl mb-4 opacity-50">🌱</Text>
-            <Text className="text-textPrimary font-bold text-lg mb-2">No products found</Text>
-            <Text className="text-textSecondary text-center mb-6">You haven't listed any items that match this criteria.</Text>
-            <TouchableOpacity onPress={() => router.push('/(farmer)/products/add' as any)} className="bg-primary px-6 py-3 rounded-xl shadow-sm">
-              <Text className="text-white font-bold">Add Your First Product</Text>
-            </TouchableOpacity>
-          </View>
-        }
+        horizontal
+        data={CATEGORIES}
+        keyExtractor={c => c}
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.chipList}
+        renderItem={({ item: cat }) => (
+          <TouchableOpacity
+            onPress={() => setActiveCategory(cat)}
+            style={[styles.chip, activeCategory === cat && styles.chipActive]}
+          >
+            <Text style={[styles.chipText, activeCategory === cat && styles.chipTextActive]}>
+              {cat}
+            </Text>
+          </TouchableOpacity>
+        )}
+        style={styles.chipContainer}
       />
 
-      {/* FAB Add Button */}
+      {loading ? (
+        <View style={styles.skeletonWrap}>
+          <SkeletonLoader.ProductGrid count={4} />
+        </View>
+      ) : error ? (
+        <View style={styles.centered}>
+          <Feather name="wifi-off" size={32} color={Colors.textSecondary} />
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity onPress={() => fetchProducts()} style={styles.retryBtn}>
+            <Text style={styles.retryBtnText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <FlatList
+          data={filteredProducts}
+          keyExtractor={item => item._id}
+          renderItem={renderProductCard}
+          contentContainerStyle={styles.list}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={() => fetchProducts(true)} colors={[Colors.primary]} />
+          }
+          ListEmptyComponent={
+            <View style={styles.emptyWrap}>
+              <Text style={styles.emptyEmoji}>🌱</Text>
+              <Text style={styles.emptyTitle}>No products found</Text>
+              <Text style={styles.emptyDesc}>You haven't listed any items that match this criteria.</Text>
+              <TouchableOpacity
+                onPress={() => router.push('/(farmer)/products/add' as any)}
+                style={styles.emptyBtn}
+              >
+                <Text style={styles.emptyBtnText}>Add Your First Product</Text>
+              </TouchableOpacity>
+            </View>
+          }
+        />
+      )}
+
       <TouchableOpacity
         onPress={() => router.push('/(farmer)/products/add' as any)}
-        className="absolute bottom-6 right-6 w-14 h-14 bg-primary rounded-2xl items-center justify-center shadow-lg"
-        style={{ elevation: 5, shadowColor: Colors.primary, shadowOffset: { height: 4, width: 0 }, shadowRadius: 8 }}
+        style={[styles.fab, { bottom: insets.bottom + 24 }]}
       >
         <Feather name="plus" size={28} color="#fff" />
       </TouchableOpacity>
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  root: { flex: 1, backgroundColor: Colors.background },
+
+  headerRow: {
+    paddingHorizontal: 24, paddingTop: 8, paddingBottom: 4,
+  },
+  heading: { fontSize: 28, fontWeight: '900', color: Colors.textPrimary },
+
+  tabBar: {
+    flexDirection: 'row', paddingHorizontal: 24,
+    borderBottomWidth: 1, borderBottomColor: '#F1F5F9', backgroundColor: Colors.surface,
+  },
+  tabItem: { marginRight: 24, paddingVertical: 12, position: 'relative' },
+  tabText: { fontSize: 13, fontWeight: '700', color: Colors.textSecondary },
+  tabTextActive: { color: Colors.primary },
+  tabIndicator: {
+    position: 'absolute', bottom: -1, left: 0, right: 0,
+    height: 2, backgroundColor: Colors.primary, borderRadius: 2,
+  },
+
+  chipContainer: { maxHeight: 48, backgroundColor: Colors.surface },
+  chipList: { paddingHorizontal: 24, paddingVertical: 8, gap: 8 },
+  chip: {
+    paddingHorizontal: 14, paddingVertical: 6, borderRadius: 999,
+    backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.border,
+  },
+  chipActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
+  chipText: { fontSize: 12, fontWeight: '600', color: Colors.textSecondary, textTransform: 'capitalize' },
+  chipTextActive: { color: '#fff' },
+
+  skeletonWrap: { paddingHorizontal: 24, paddingTop: 16 },
+
+  list: { paddingHorizontal: 24, paddingTop: 12, paddingBottom: 100 },
+
+  card: {
+    backgroundColor: Colors.surface, borderRadius: 20, marginBottom: 12,
+    borderWidth: 1, borderColor: '#F1F5F9', padding: 14,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04, shadowRadius: 6, elevation: 2,
+  },
+  cardHidden: { backgroundColor: '#F9FAFB', borderColor: '#E5E7EB' },
+  cardRow: { flexDirection: 'row', gap: 12 },
+  thumb: {
+    width: 72, height: 72, borderRadius: 14,
+    backgroundColor: '#F0FDF4', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+  },
+  thumbHidden: { backgroundColor: '#F3F4F6' },
+  thumbImage: { width: '100%', height: '100%' },
+  thumbEmoji: { fontSize: 32 },
+
+  cardBody: { flex: 1, justifyContent: 'space-between' },
+  cardTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  cardTitleBlock: { flex: 1, paddingRight: 8 },
+  productName: { fontSize: 14, fontWeight: '800', color: Colors.textPrimary, marginBottom: 2 },
+  productNameHidden: { color: '#9CA3AF' },
+  productPrice: { fontSize: 13, fontWeight: '700', color: Colors.primary },
+  productUnit: { fontSize: 10, fontWeight: '500', color: Colors.textSecondary },
+
+  badgePending: { backgroundColor: '#FEF3C7', paddingHorizontal: 6, paddingVertical: 3, borderRadius: 6 },
+  badgePendingText: { fontSize: 9, fontWeight: '800', color: '#92400E' },
+  badgeRejected: { backgroundColor: '#FEE2E2', paddingHorizontal: 6, paddingVertical: 3, borderRadius: 6 },
+  badgeRejectedText: { fontSize: 9, fontWeight: '800', color: '#991B1B' },
+
+  tagRow: { flexDirection: 'row', gap: 6, marginTop: 8 },
+  stockTag: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  stockTagOk: { backgroundColor: '#F3F4F6' },
+  stockTagLow: { backgroundColor: Colors.warningLight },
+  stockTagOut: { backgroundColor: Colors.errorLight },
+  stockTagText: { fontSize: 10, fontWeight: '700' },
+  stockTagTextOk: { color: Colors.textSecondary },
+  stockTagTextLow: { color: '#92400E' },
+  stockTagTextOut: { color: Colors.error },
+  categoryTag: { backgroundColor: '#F3F4F6', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  categoryTagText: { fontSize: 10, fontWeight: '700', color: Colors.textSecondary, textTransform: 'capitalize' },
+
+  cardFooter: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginTop: 12, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#F1F5F9',
+  },
+  ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  ratingText: { fontSize: 11, color: Colors.textSecondary, fontWeight: '500' },
+  actionBtns: {
+    flexDirection: 'row', borderWidth: 1, borderColor: '#F1F5F9',
+    borderRadius: 10, overflow: 'hidden', backgroundColor: '#F9FAFB',
+  },
+  editBtn: { padding: 8, borderRightWidth: 1, borderRightColor: '#F1F5F9', backgroundColor: Colors.surface },
+  deleteBtn: { padding: 8, backgroundColor: Colors.surface },
+
+  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 60 },
+  errorText: { color: Colors.textSecondary, fontWeight: '700', textAlign: 'center', marginTop: 12, marginBottom: 16 },
+  retryBtn: { backgroundColor: Colors.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12 },
+  retryBtnText: { color: '#fff', fontWeight: '800' },
+
+  emptyWrap: { alignItems: 'center', justifyContent: 'center', paddingTop: 60, paddingHorizontal: 24 },
+  emptyEmoji: { fontSize: 56, marginBottom: 16, opacity: 0.5 },
+  emptyTitle: { fontSize: 18, fontWeight: '800', color: Colors.textPrimary, marginBottom: 8 },
+  emptyDesc: { fontSize: 14, color: Colors.textSecondary, textAlign: 'center', marginBottom: 24 },
+  emptyBtn: { backgroundColor: Colors.primary, paddingHorizontal: 24, paddingVertical: 14, borderRadius: 14 },
+  emptyBtnText: { color: '#fff', fontWeight: '800', fontSize: 14 },
+
+  fab: {
+    position: 'absolute', right: 24,
+    width: 56, height: 56, borderRadius: 18,
+    backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center',
+    elevation: 5, shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8,
+  },
+});

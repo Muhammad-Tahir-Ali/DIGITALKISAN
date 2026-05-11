@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  View, Text, TextInput, TouchableOpacity, ScrollView, Platform, 
-  ToastAndroid, Alert, Image, KeyboardAvoidingView, StyleSheet, Dimensions, ActivityIndicator
+import {
+  View, Text, TextInput, TouchableOpacity, ScrollView, Platform,
+  Alert, Image, KeyboardAvoidingView, StyleSheet, Dimensions, ActivityIndicator
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useForm, Controller } from 'react-hook-form';
@@ -9,6 +9,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Feather } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '@/constants/colors';
 import { Button } from '@/components/ui';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -33,6 +34,7 @@ const CATEGORIES = ['grains', 'vegetables', 'fruits', 'dairy', 'livestock', 'oth
 
 export default function AddProductScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { productId } = useLocalSearchParams<{ productId?: string }>();
   const isEditing = !!productId;
 
@@ -246,7 +248,7 @@ export default function AddProductScreen() {
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.container}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <TouchableOpacity 
           style={styles.backBtn}
           onPress={() => router.back()}
@@ -397,7 +399,7 @@ export default function AddProductScreen() {
       </ScrollView>
 
       {/* FINAL ACTION */}
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
          <Button 
             label={isSimulatingAI ? 'Analyzing & Publishing...' : 'Confirm Listing'}
             onPress={handleSubmit(onSubmit)}
@@ -417,7 +419,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8FAFB' },
   header: {
     flexDirection: 'row', alignItems: 'center',
-    paddingTop: 60, paddingBottom: 20, paddingHorizontal: 24,
+    paddingBottom: 20, paddingHorizontal: 24,
     backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#F1F5F9',
   },
   backBtn: {
@@ -489,8 +491,8 @@ const styles = StyleSheet.create({
 
   footer: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
-    backgroundColor: '#fff', padding: 24, borderTopWidth: 1, borderTopColor: '#F1F5F9',
-    paddingBottom: Platform.OS === 'ios' ? 40 : 24,
+    backgroundColor: '#fff', paddingHorizontal: 24, paddingTop: 16,
+    borderTopWidth: 1, borderTopColor: '#F1F5F9',
   },
   submitBtn: {
     backgroundColor: Colors.agri.sabz, height: 60, borderRadius: 18,

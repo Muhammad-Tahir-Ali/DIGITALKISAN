@@ -1,10 +1,11 @@
 import React, { useState, useMemo } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
-  StyleSheet, Platform, TextInput, Dimensions
+  StyleSheet, TextInput, Dimensions
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '@/constants/colors';
 import { LinearGradient } from 'expo-linear-gradient';
 import userService, { Farmer } from '@/services/user.service';
@@ -22,9 +23,20 @@ const CATEGORIES = [
   { id: '8', name: 'Seeds', emoji: '🌱', count: 22, desc: 'Planting Seeds', bg: '#F0FDF4', border: '#BBF7D0', icon: '#15803D' },
 ];
 
+type SortKey = 'default' | 'name_asc' | 'count_desc';
+
+const SORT_OPTIONS: { key: SortKey; label: string }[] = [
+  { key: 'default',    label: 'Default' },
+  { key: 'name_asc',  label: 'A → Z' },
+  { key: 'count_desc', label: 'Most Products' },
+];
+
 export default function CategoriesScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [search, setSearch] = useState('');
+  const [sort, setSort] = useState<SortKey>('default');
+  const [showSortPanel, setShowSortPanel] = useState(false);
   const [topFarmers, setTopFarmers] = useState<Farmer[]>([]);
 
   React.useEffect(() => {
@@ -39,11 +51,15 @@ export default function CategoriesScreen() {
     loadFarmers();
   }, []);
 
-  const filtered = useMemo(() =>
-    CATEGORIES.filter(c =>
+  const filtered = useMemo(() => {
+    let list = CATEGORIES.filter(c =>
       c.name.toLowerCase().includes(search.toLowerCase()) ||
       c.desc.toLowerCase().includes(search.toLowerCase())
-    ), [search]);
+    );
+    if (sort === 'name_asc') list = [...list].sort((a, b) => a.name.localeCompare(b.name));
+    if (sort === 'count_desc') list = [...list].sort((a, b) => b.count - a.count);
+    return list;
+  }, [search, sort]);
 
   const handleCategory = (name: string) => {
     router.push(`/(buyer)/products/${name}` as any);
@@ -54,7 +70,7 @@ export default function CategoriesScreen() {
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
 
         {/* ── HEADER ─────────────────────────────────────────────── */}
-        <View style={styles.header}>
+        <View style={[styles.header, { paddingTop: insets.top + 20 }]}>
           <TouchableOpacity
             style={styles.backBtn}
             onPress={() => router.back()}
@@ -65,8 +81,11 @@ export default function CategoriesScreen() {
             <Text style={styles.heading}>Market Discovery</Text>
             <Text style={styles.headingSuffix}>All Categories</Text>
           </View>
-          <TouchableOpacity style={styles.filterBtn}>
-            <Feather name="sliders" size={16} color={Colors.textPrimary} />
+          <TouchableOpacity
+            style={[styles.filterBtn, showSortPanel && styles.filterBtnActive]}
+            onPress={() => setShowSortPanel(v => !v)}
+          >
+            <Feather name="sliders" size={16} color={showSortPanel ? '#fff' : Colors.textPrimary} />
           </TouchableOpacity>
         </View>
 
@@ -88,6 +107,26 @@ export default function CategoriesScreen() {
             )}
           </View>
         </View>
+
+        {/* ── SORT PANEL ─────────────────────────────────────────── */}
+        {showSortPanel && (
+          <View style={styles.sortPanel}>
+            <Text style={styles.sortLabel}>Sort by</Text>
+            <View style={styles.chipRow}>
+              {SORT_OPTIONS.map(o => (
+                <TouchableOpacity
+                  key={o.key}
+                  onPress={() => setSort(o.key)}
+                  style={[styles.chip, sort === o.key && styles.chipActive]}
+                >
+                  <Text style={[styles.chipText, sort === o.key && styles.chipTextActive]}>
+                    {o.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        )}
 
         {/* ── STATS BAR ──────────────────────────────────────────── */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.statsBar}>
@@ -206,7 +245,6 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: 20,
-    paddingTop: Platform.OS === 'ios' ? 60 : 48,
     paddingBottom: 20,
   },
   backBtn: {
@@ -226,6 +264,21 @@ const styles = StyleSheet.create({
     shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.05, shadowRadius: 10, elevation: 2,
   },
+  filterBtnActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
+
+  sortPanel: {
+    backgroundColor: '#fff', paddingHorizontal: 20, paddingVertical: 16,
+    marginBottom: 12, borderTopWidth: 1, borderBottomWidth: 1, borderColor: '#EEF2F7',
+  },
+  sortLabel: { fontSize: 12, fontWeight: '800', color: '#64748B', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  chip: {
+    paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20,
+    borderWidth: 1, borderColor: '#E2E8F0', backgroundColor: '#fff',
+  },
+  chipActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
+  chipText: { fontSize: 13, fontWeight: '600', color: '#64748B' },
+  chipTextActive: { color: '#fff' },
 
   // Search
   searchSection: { paddingHorizontal: 20, marginBottom: 24 },

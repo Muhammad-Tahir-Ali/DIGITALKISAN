@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { View, Text, ScrollView, Animated, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '@/constants/colors';
 import { Button } from '@/components/ui';
 import { EscrowBadge } from '@/components/checkout/EscrowBadge';
@@ -17,7 +18,8 @@ const ORDER_TRACKER: TimelineStep[] = [
 
 export default function OrderConfirmedScreen() {
   const router = useRouter();
-  
+  const insets = useSafeAreaInsets();
+
   // Animation state
   const scaleValue = useRef(new Animated.Value(0)).current;
   const opacityValue = useRef(new Animated.Value(0)).current;
@@ -39,7 +41,7 @@ export default function OrderConfirmedScreen() {
   }, []);
 
   return (
-    <View className="flex-1 bg-white pt-16">
+    <View className="flex-1 bg-white" style={{ paddingTop: insets.top + 16 }}>
       <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
         
         {/* ── Animated Escrow Lock Sequence ── */}
@@ -108,7 +110,7 @@ export default function OrderConfirmedScreen() {
       </ScrollView>
 
       {/* ── Action Buttons ── */}
-      <View className="px-6 py-5 bg-white border-t border-gray-100 flex-row gap-x-4 shadow-[0_-10px_15px_-3px_rgba(0,0,0,0.05)]">
+      <View className="px-6 py-5 bg-white border-t border-gray-100 flex-row gap-x-4 shadow-[0_-10px_15px_-3px_rgba(0,0,0,0.05)]" style={{ paddingBottom: insets.bottom + 16 }}>
         <Button 
           variant="outline" 
           label="Track Order" 

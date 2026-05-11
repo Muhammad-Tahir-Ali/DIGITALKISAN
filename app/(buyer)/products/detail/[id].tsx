@@ -1,11 +1,12 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView,
-  FlatList, StyleSheet, Platform, Dimensions,
+  FlatList, StyleSheet, Dimensions,
   NativeSyntheticEvent, NativeScrollEvent, Animated, Image, ActivityIndicator, Share, Alert
 } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '@/constants/colors';
 import { AiBadge } from '@/components/marketplace/AiBadge';
 import { useCartStore } from '@/store/cartStore';
@@ -16,6 +17,7 @@ const { width: SW } = Dimensions.get('window');
 export default function ProductDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router  = useRouter();
+  const insets  = useSafeAreaInsets();
 
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
@@ -152,7 +154,7 @@ export default function ProductDetailScreen() {
           </View>
 
           {/* Overlay action row */}
-          <View style={styles.overlayActions}>
+          <View style={[styles.overlayActions, { top: insets.top + 12 }]}>
             <TouchableOpacity onPress={() => router.back()} style={styles.overlayBtn}>
               <Feather name="arrow-left" size={20} color={Colors.textPrimary} />
             </TouchableOpacity>
@@ -278,7 +280,7 @@ export default function ProductDetailScreen() {
       </ScrollView>
 
       {/* ── FLOATING BOTTOM BAR ──────────────────────────────────── */}
-      <View style={styles.bottomBar}>
+      <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 14 }]}>
         {/* Modern Quantity Stepper */}
         <View style={styles.stepper}>
           <TouchableOpacity
@@ -338,7 +340,7 @@ const styles = StyleSheet.create({
   dotActive: { width: 18, backgroundColor: Colors.primary },
 
   overlayActions: {
-    position: 'absolute', top: Platform.OS === 'ios' ? 54 : 40,
+    position: 'absolute',
     left: 16, right: 16,
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
   },
@@ -432,7 +434,6 @@ const styles = StyleSheet.create({
     borderTopWidth: 1, borderTopColor: '#F1F5F9',
     paddingHorizontal: 20,
     paddingTop: 14,
-    paddingBottom: Platform.OS === 'ios' ? 36 : 18,
     flexDirection: 'row', alignItems: 'center', gap: 14,
     shadowColor: '#000', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.03, shadowRadius: 10, elevation: 10,
   },

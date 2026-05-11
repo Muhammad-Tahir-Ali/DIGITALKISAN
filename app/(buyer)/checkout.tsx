@@ -1,29 +1,39 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, StyleSheet, Dimensions, Alert, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '@/constants/colors';
 import { Button } from '@/components/ui';
 import { EscrowBadge } from '@/components/checkout/EscrowBadge';
 import { useCartStore } from '@/store/cartStore';
 import { LinearGradient } from 'expo-linear-gradient';
 import orderService from '@/services/order.service';
+import userService from '@/services/user.service';
 
 const { width } = Dimensions.get('window');
 
-const PAYMENT_OPTIONS = [
-  { id: 'wallet', label: 'DigitalKisan Wallet', subtitle: 'Balance: Check wallet', icon: 'credit-card', type: 'escrow' },
-  { id: 'jazzcash', label: 'JazzCash Escrow', subtitle: 'Secure Mobile Payment', icon: 'smartphone', type: 'escrow' },
-  { id: 'easypaisa', label: 'Easypaisa Escrow', subtitle: 'Secure Mobile Payment', icon: 'zap', type: 'escrow' },
+const PAYMENT_OPTIONS = (balance: number) => [
+  { id: 'wallet', label: 'DigitalKisan Wallet', subtitle: `Balance: ₨ ${balance.toLocaleString()}`, icon: 'credit-card', type: 'escrow' },
+  { id: 'jazzcash', label: 'JazzCash Escrow', subtitle: 'Coming Soon', icon: 'smartphone', type: 'escrow', disabled: true },
+  { id: 'easypaisa', label: 'Easypaisa Escrow', subtitle: 'Coming Soon', icon: 'zap', type: 'escrow', disabled: true },
 ];
 
 export default function CheckoutScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [step, setStep] = useState(1);
   const [deliveryAddress, setDeliveryAddress] = useState('');
   const [deliveryNote, setDeliveryNote] = useState('');
   const [selectedPayment, setSelectedPayment] = useState('wallet');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [walletBalance, setWalletBalance] = useState<number>(0);
+
+  useEffect(() => {
+    userService.getWallet().then(data => {
+      setWalletBalance(data.availableBalance);
+    }).catch(() => setWalletBalance(0));
+  }, []);
 
   // Load live cart data
   const items = useCartStore((s) => s.items);
@@ -36,14 +46,34 @@ export default function CheckoutScreen() {
   const handleNext = async () => {
     if (step === 1) {
       if (!deliveryAddress.trim()) {
-        Alert.alert('Address Required', 'Please enter your delivery address.');
+        if (Platform.OS === 'web') window.alert('Address Required: Please enter your delivery address.');
+        else Alert.alert('Address Required', 'Please enter your delivery address.');
         return;
       }
       setStep(2);
       return;
     }
-    if (step < 3) {
-      setStep(step + 1);
+    if (step === 2) {
+      if (selectedPayment === 'wallet' && walletBalance < grandTotal) {
+        const msg = `Your wallet balance (₨ ${walletBalance.toLocaleString()}) is less than the total amount (₨ ${grandTotal.toLocaleString()}). Please top up your wallet.`;
+        
+        if (Platform.OS === 'web') {
+           const confirmTopup = window.confirm(`${msg}\n\nDo you want to add money?`);
+           if (confirmTopup) router.push('/(buyer)/wallet/topup' as any);
+           return;
+        }
+
+        Alert.alert(
+          'Insufficient Balance',
+          msg,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Add Money', onPress: () => router.push('/(buyer)/wallet/topup' as any) }
+          ]
+        );
+        return;
+      }
+      setStep(3);
       return;
     }
 
@@ -63,11 +93,9 @@ export default function CheckoutScreen() {
       clearCart();
       router.replace('/(buyer)/order-confirmed' as any);
     } catch (e: any) {
-      Alert.alert(
-        'Order Failed',
-        e?.response?.data?.message ?? 'Something went wrong. Please try again.',
-        [{ text: 'OK' }]
-      );
+      const errorMsg = e?.response?.data?.message ?? 'Something went wrong. Please try again.';
+      if (Platform.OS === 'web') window.alert(`Order Failed: ${errorMsg}`);
+      else Alert.alert('Order Failed', errorMsg, [{ text: 'OK' }]);
     } finally {
       setIsSubmitting(false);
     }
@@ -94,7 +122,7 @@ export default function CheckoutScreen() {
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.container}>
       {/* ── HEADER ── */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <TouchableOpacity onPress={handleBack} style={styles.backBtn}>
           <Feather name="arrow-left" size={20} color={Colors.textPrimary} />
         </TouchableOpacity>
@@ -159,27 +187,38 @@ export default function CheckoutScreen() {
 
             <Text style={styles.stepTitle}>Select Escrow Provider</Text>
             
-            {PAYMENT_OPTIONS.map(pay => (
+            {PAYMENT_OPTIONS(walletBalance).map(pay => (
               <TouchableOpacity 
                 key={pay.id}
-                onPress={() => setSelectedPayment(pay.id)}
-                style={[styles.payCard, selectedPayment === pay.id && styles.payCardActive]}
+                onPress={() => !(pay as any).disabled && setSelectedPayment(pay.id)}
+                activeOpacity={(pay as any).disabled ? 1 : 0.7}
+                style={[
+                  styles.payCard, 
+                  selectedPayment === pay.id && styles.payCardActive,
+                  (pay as any).disabled && { opacity: 0.5 }
+                ]}
               >
-                <View style={styles.payEmojiWrap}>
+                <View style={[styles.payEmojiWrap, (pay as any).disabled && { backgroundColor: '#F8FAFC' }]}>
                   <Feather name={pay.icon as any} size={22} color={selectedPayment === pay.id ? Colors.agri.sabz : '#94A3B8'} />
                 </View>
                 <View style={{ flex: 1 }}>
                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                      <Text style={styles.payLabel}>{pay.label}</Text>
-                      <View style={styles.verifiedPayBadge}>
-                         <Text style={styles.verifiedPayText}>Escrow</Text>
-                      </View>
+                      <Text style={[styles.payLabel, (pay as any).disabled && { color: '#94A3B8' }]}>{pay.label}</Text>
+                      {! (pay as any).disabled && (
+                        <View style={styles.verifiedPayBadge}>
+                          <Text style={styles.verifiedPayText}>Escrow</Text>
+                        </View>
+                      )}
                    </View>
-                   <Text style={styles.paySub}>{pay.subtitle}</Text>
+                   <Text style={[styles.paySub, (pay as any).disabled && { color: '#CBD5E1' }]}>{pay.subtitle}</Text>
                 </View>
-                <View style={[styles.radioCircle, selectedPayment === pay.id && styles.radioActive]}>
-                  {selectedPayment === pay.id && <View style={styles.radioInner} />}
-                </View>
+                {!(pay as any).disabled ? (
+                  <View style={[styles.radioCircle, selectedPayment === pay.id && styles.radioActive]}>
+                    {selectedPayment === pay.id && <View style={styles.radioInner} />}
+                  </View>
+                ) : (
+                  <Feather name="lock" size={14} color="#CBD5E1" />
+                )}
               </TouchableOpacity>
             ))}
           </View>
@@ -194,8 +233,8 @@ export default function CheckoutScreen() {
                <View style={styles.summaryHeader}>
                   <Text style={styles.summaryTitle}>Bill Summary</Text>
                   <View style={styles.paymentMethodTag}>
-                     <Feather name={PAYMENT_OPTIONS.find(p => p.id === selectedPayment)?.icon as any} size={14} color="#475569" />
-                     <Text style={styles.paymentMethodName}>{PAYMENT_OPTIONS.find(p => p.id === selectedPayment)?.label}</Text>
+                     <Feather name={PAYMENT_OPTIONS(walletBalance).find(p => p.id === selectedPayment)?.icon as any} size={14} color="#475569" />
+                     <Text style={styles.paymentMethodName}>{PAYMENT_OPTIONS(walletBalance).find(p => p.id === selectedPayment)?.label}</Text>
                   </View>
                </View>
 
@@ -249,7 +288,7 @@ export default function CheckoutScreen() {
       </ScrollView>
 
       {/* ── FOOTER ACTION ── */}
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
         <TouchableOpacity
           activeOpacity={0.8}
           onPress={handleNext}
@@ -281,7 +320,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8FAFB' },
   header: {
     flexDirection: 'row', alignItems: 'center',
-    paddingTop: 60, paddingBottom: 20, paddingHorizontal: 24,
+    paddingBottom: 20, paddingHorizontal: 24,
     backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#F1F5F9',
   },
   backBtn: {
@@ -395,7 +434,7 @@ const styles = StyleSheet.create({
 
   footer: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
-    backgroundColor: '#fff', padding: 24, borderTopWidth: 1, borderTopColor: '#F1F5F9', paddingBottom: Platform.OS === 'ios' ? 40 : 24,
+    backgroundColor: '#fff', padding: 24, borderTopWidth: 1, borderTopColor: '#F1F5F9',
   },
   mainBtn: {
     backgroundColor: Colors.agri.sabz, height: 60, borderRadius: 18,

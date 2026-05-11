@@ -7,11 +7,11 @@ import { useAuthStore } from '@/store/authStore';
 // 10.0.2.2 only works inside the Android Emulator; localhost only works on web.
 const DEV_MACHINE_IP = '192.168.100.30';
 
-export const BASE_URL = __DEV__
+export const BASE_URL = process.env.EXPO_PUBLIC_API_URL || (__DEV__
   ? (Platform.OS === 'web'
       ? 'http://localhost:3000/api/v1'
       : `http://${DEV_MACHINE_IP}:3000/api/v1`)
-  : 'https://api.digitalkisan.pk/v1';
+  : 'https://digital-kisan-api.onrender.com/api/v1');
 
 const api = axios.create({
   baseURL: BASE_URL,

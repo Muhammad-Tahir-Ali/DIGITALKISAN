@@ -58,14 +58,10 @@ export default function FarmerLayout() {
         options={{ title: 'Profile', tabBarIcon: ({ color }) => <Feather name="user" size={22} color={color} /> }}
       />
       {/* Hidden Screens */}
-      <Tabs.Screen
-        name="products/add"
-        options={{ href: null }}
-      />
-      <Tabs.Screen
-        name="orders/[id]"
-        options={{ href: null }}
-      />
+      <Tabs.Screen name="products/add" options={{ href: null }} />
+      <Tabs.Screen name="orders/[id]" options={{ href: null }} />
+      <Tabs.Screen name="wallet/history" options={{ href: null }} />
+      <Tabs.Screen name="wallet/withdraw" options={{ href: null }} />
     </Tabs>
   );
 }

@@ -1,11 +1,13 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, FlatList,
-  StyleSheet, Platform, ActivityIndicator,
+  StyleSheet,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ArrowLeft, SlidersHorizontal, Leaf } from 'lucide-react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '@/constants/colors';
+import { SkeletonLoader } from '@/components/ui';
 import productService, { Product } from '@/services/product.service';
 import { ProductCard } from '@/components/marketplace/ProductCard';
 
@@ -20,9 +22,32 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
 
 const keyExtractor = (item: Product) => item._id;
 
+// Defined outside the screen so React never unmounts it on sort state changes
+function FilterPanel({ sort, setSort }: { sort: SortKey; setSort: (k: SortKey) => void }) {
+  return (
+    <View style={styles.filterPanel}>
+      <Text style={styles.filterLabel}>Sort by</Text>
+      <View style={styles.chipRow}>
+        {SORT_OPTIONS.map((o) => (
+          <TouchableOpacity
+            key={o.key}
+            onPress={() => setSort(o.key)}
+            style={[styles.chip, sort === o.key && styles.chipActive]}
+          >
+            <Text style={[styles.chipText, sort === o.key && styles.chipTextActive]}>
+              {o.label}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+    </View>
+  );
+}
+
 export default function CategoryProductsScreen() {
   const { category } = useLocalSearchParams<{ category: string }>();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -64,29 +89,10 @@ export default function CategoryProductsScreen() {
     [],
   );
 
-  const FilterPanel = () => (
-    <View style={styles.filterPanel}>
-      <Text style={styles.filterLabel}>Sort by</Text>
-      <View style={styles.chipRow}>
-        {SORT_OPTIONS.map((o) => (
-          <TouchableOpacity
-            key={o.key}
-            onPress={() => setSort(o.key)}
-            style={[styles.chip, sort === o.key && styles.chipActive]}
-          >
-            <Text style={[styles.chipText, sort === o.key && styles.chipTextActive]}>
-              {o.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-    </View>
-  );
-
   return (
     <View style={styles.root}>
       {/* ── HEADER ── */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 14 }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <ArrowLeft size={20} color={Colors.textPrimary} />
         </TouchableOpacity>
@@ -97,7 +103,7 @@ export default function CategoryProductsScreen() {
       </View>
 
       {/* ── FILTER PANEL ── */}
-      {showPanel && <FilterPanel />}
+      {showPanel && <FilterPanel sort={sort} setSort={setSort} />}
 
       {/* ── RESULTS COUNT ── */}
       {!loading && (
@@ -108,9 +114,8 @@ export default function CategoryProductsScreen() {
 
       {/* ── STATES ── */}
       {loading ? (
-        <View style={styles.centered}>
-          <ActivityIndicator size="large" color={Colors.primary} />
-          <Text style={styles.loadingText}>Loading products...</Text>
+        <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>
+          <SkeletonLoader.ProductGrid count={6} />
         </View>
       ) : error ? (
         <View style={styles.centered}>
@@ -155,7 +160,6 @@ const styles = StyleSheet.create({
 
   header: {
     flexDirection: 'row', alignItems: 'center',
-    paddingTop: Platform.OS === 'ios' ? 56 : 44,
     paddingHorizontal: 20, paddingBottom: 14,
     backgroundColor: '#fff',
     borderBottomWidth: 1, borderBottomColor: Colors.border,
@@ -197,7 +201,6 @@ const styles = StyleSheet.create({
   listContent: { paddingTop: 8, paddingBottom: 60, gap: 12 },
 
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 80, paddingHorizontal: 24 },
-  loadingText: { marginTop: 12, fontSize: 14, color: Colors.textSecondary, fontWeight: '500' },
   emptyTitle: { fontSize: 18, fontWeight: '800', color: Colors.textPrimary, marginTop: 16, marginBottom: 4 },
   emptySub: { fontSize: 14, color: Colors.textSecondary, textAlign: 'center' },
   retryBtn: {
