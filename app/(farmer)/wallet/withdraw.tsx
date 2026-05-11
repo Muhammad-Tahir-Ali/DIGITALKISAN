@@ -1,5 +1,8 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, Alert, ActivityIndicator } from 'react-native';
+import React, { useEffect } from 'react';
+import {
+  View, Text, StyleSheet, TouchableOpacity, TextInput,
+  ScrollView, Alert, ActivityIndicator,
+} from 'react-native';
 import { useRouter } from 'expo-router';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -10,10 +13,9 @@ import { Colors } from '@/constants/colors';
 import userService from '@/services/user.service';
 
 const withdrawSchema = z.object({
-  amount: z.string().min(1, 'Amount is required').refine(
-    (v) => !isNaN(parseFloat(v)) && parseFloat(v) >= 500,
-    'Minimum withdrawal is ₨ 500'
-  ),
+  amount: z.string()
+    .min(1, 'Amount is required')
+    .refine(v => !isNaN(parseFloat(v)) && parseFloat(v) >= 500, 'Minimum withdrawal is ₨ 500'),
   accountTitle: z.string().min(2, 'Account title is required'),
   accountNumber: z.string().min(5, 'Account number is required'),
   bankName: z.string().optional(),
@@ -22,9 +24,9 @@ const withdrawSchema = z.object({
 type WithdrawForm = z.infer<typeof withdrawSchema>;
 
 const METHODS = [
-  { id: 'jazzcash' as const, label: 'JazzCash', color: '#DB2777' },
-  { id: 'easypaisa' as const, label: 'Easypaisa', color: '#059669' },
-  { id: 'bank_transfer' as const, label: 'Bank', color: '#0EA5E9' },
+  { id: 'jazzcash' as const,      label: 'JazzCash',      color: '#DB2777' },
+  { id: 'easypaisa' as const,     label: 'Easypaisa',     color: '#059669' },
+  { id: 'bank_transfer' as const, label: 'Bank Transfer', color: '#0EA5E9' },
 ];
 
 export default function FarmerWithdrawalScreen() {
@@ -32,6 +34,15 @@ export default function FarmerWithdrawalScreen() {
   const insets = useSafeAreaInsets();
   const [method, setMethod] = React.useState<'jazzcash' | 'easypaisa' | 'bank_transfer'>('jazzcash');
   const [loading, setLoading] = React.useState(false);
+  const [availableBalance, setAvailableBalance] = React.useState<number | null>(null);
+  const [balanceLoading, setBalanceLoading] = React.useState(true);
+
+  useEffect(() => {
+    userService.getWallet()
+      .then(data => setAvailableBalance(data.availableBalance))
+      .catch(() => setAvailableBalance(null))
+      .finally(() => setBalanceLoading(false));
+  }, []);
 
   const { control, handleSubmit, formState: { errors } } = useForm<WithdrawForm>({
     resolver: zodResolver(withdrawSchema),
@@ -39,10 +50,26 @@ export default function FarmerWithdrawalScreen() {
   });
 
   const onSubmit = async (data: WithdrawForm) => {
+    const requested = parseFloat(data.amount);
+
+    // Guard against overdraw if we know the balance
+    if (availableBalance !== null && requested > availableBalance) {
+      Alert.alert(
+        'Insufficient Balance',
+        `You requested ₨ ${requested.toLocaleString()} but your available balance is only ₨ ${availableBalance.toLocaleString()}.`
+      );
+      return;
+    }
+
+    if (method === 'bank_transfer' && !data.bankName?.trim()) {
+      Alert.alert('Bank Name Required', 'Please enter your bank name for bank transfers.');
+      return;
+    }
+
     setLoading(true);
     try {
       await userService.requestWithdrawal(
-        parseFloat(data.amount),
+        requested,
         method,
         {
           accountTitle: data.accountTitle,
@@ -52,7 +79,7 @@ export default function FarmerWithdrawalScreen() {
       );
       Alert.alert(
         'Request Submitted',
-        'Your withdrawal request has been submitted. Funds will be processed within 24-48 hours.',
+        'Your withdrawal request has been submitted. Funds will be processed within 24–48 hours.',
         [{ text: 'OK', onPress: () => router.back() }]
       );
     } catch (error: any) {
@@ -61,6 +88,8 @@ export default function FarmerWithdrawalScreen() {
       setLoading(false);
     }
   };
+
+  const isMobileWallet = method === 'jazzcash' || method === 'easypaisa';
 
   return (
     <View style={styles.container}>
@@ -72,6 +101,21 @@ export default function FarmerWithdrawalScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+
+        {/* Available Balance chip */}
+        <View style={styles.balanceChip}>
+          <Feather name="credit-card" size={14} color={Colors.primary} />
+          {balanceLoading ? (
+            <Text style={styles.balanceChipText}>Loading balance…</Text>
+          ) : availableBalance !== null ? (
+            <Text style={styles.balanceChipText}>
+              Available: <Text style={styles.balanceChipAmount}>₨ {availableBalance.toLocaleString()}</Text>
+            </Text>
+          ) : (
+            <Text style={styles.balanceChipText}>Balance unavailable</Text>
+          )}
+        </View>
+
         <View style={styles.section}>
           <Text style={styles.label}>Withdrawal Amount</Text>
           <Controller
@@ -88,6 +132,14 @@ export default function FarmerWithdrawalScreen() {
                   value={value}
                   onChangeText={onChange}
                 />
+                {availableBalance !== null && (
+                  <TouchableOpacity
+                    onPress={() => onChange(Math.floor(availableBalance).toString())}
+                    style={styles.maxBtn}
+                  >
+                    <Text style={styles.maxBtnText}>MAX</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             )}
           />
@@ -118,7 +170,7 @@ export default function FarmerWithdrawalScreen() {
             render={({ field: { onChange, value } }) => (
               <TextInput
                 style={[styles.textInput, errors.accountTitle && styles.inputError]}
-                placeholder="Account Title (Full Name)"
+                placeholder="Account Title / Full Name"
                 placeholderTextColor="#94A3B8"
                 value={value}
                 onChangeText={onChange}
@@ -133,9 +185,9 @@ export default function FarmerWithdrawalScreen() {
             render={({ field: { onChange, value } }) => (
               <TextInput
                 style={[styles.textInput, { marginTop: 12 }, errors.accountNumber && styles.inputError]}
-                placeholder={method === 'bank_transfer' ? 'IBAN / Account Number' : 'Mobile Wallet Number'}
+                placeholder={isMobileWallet ? 'Mobile Wallet Number (03xx-xxxxxxx)' : 'IBAN / Account Number'}
                 placeholderTextColor="#94A3B8"
-                keyboardType="numeric"
+                keyboardType={isMobileWallet ? 'phone-pad' : 'default'}
                 value={value}
                 onChangeText={onChange}
               />
@@ -150,7 +202,7 @@ export default function FarmerWithdrawalScreen() {
               render={({ field: { onChange, value } }) => (
                 <TextInput
                   style={[styles.textInput, { marginTop: 12 }]}
-                  placeholder="Bank Name"
+                  placeholder="Bank Name (e.g. HBL, UBL, Meezan)"
                   placeholderTextColor="#94A3B8"
                   value={value}
                   onChangeText={onChange}
@@ -163,7 +215,8 @@ export default function FarmerWithdrawalScreen() {
         <View style={styles.disclaimer}>
           <Feather name="info" size={16} color="#64748B" />
           <Text style={styles.disclaimerText}>
-            Payouts are processed manually by our finance team. Please ensure your account details are 100% correct.
+            Payouts are processed manually by our finance team within 24–48 hours.
+            Please ensure your account details are correct.
           </Text>
         </View>
       </ScrollView>
@@ -196,9 +249,22 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center', marginRight: 16,
   },
   headerTitle: { fontSize: 18, fontWeight: '900', color: Colors.textPrimary },
-  content: { padding: 24, paddingBottom: 40 },
+  content: { padding: 24, paddingBottom: 120 },
+
+  balanceChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: Colors.primaryLight, borderRadius: 12,
+    paddingHorizontal: 14, paddingVertical: 10, marginBottom: 28,
+    borderWidth: 1, borderColor: `${Colors.primary}30`,
+  },
+  balanceChipText: { fontSize: 13, fontWeight: '600', color: Colors.textSecondary },
+  balanceChipAmount: { fontWeight: '900', color: Colors.primary },
+
   section: { marginBottom: 32 },
-  label: { fontSize: 13, fontWeight: '800', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 },
+  label: {
+    fontSize: 13, fontWeight: '800', color: '#94A3B8',
+    textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12,
+  },
   inputContainer: {
     flexDirection: 'row', alignItems: 'center', backgroundColor: '#F8FAFB',
     borderRadius: 20, paddingHorizontal: 20, height: 64,
@@ -208,20 +274,29 @@ const styles = StyleSheet.create({
   fieldError: { color: Colors.error, fontSize: 11, fontWeight: '600', marginTop: 4 },
   currency: { fontSize: 20, fontWeight: '900', color: '#1E293B', marginRight: 10 },
   amountInput: { flex: 1, fontSize: 24, fontWeight: '900', color: '#1E293B' },
+  maxBtn: {
+    backgroundColor: Colors.primaryLight, paddingHorizontal: 10, paddingVertical: 4,
+    borderRadius: 8, borderWidth: 1, borderColor: `${Colors.primary}40`,
+  },
+  maxBtnText: { fontSize: 10, fontWeight: '900', color: Colors.primary, letterSpacing: 0.5 },
+
   methodGrid: { flexDirection: 'row', gap: 10 },
   methodBtn: {
     flex: 1, height: 48, borderRadius: 14, borderWidth: 1, borderColor: '#F1F5F9',
     flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, gap: 8,
   },
   dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#E2E8F0' },
-  methodLabel: { fontSize: 13, fontWeight: '700', color: '#64748B' },
+  methodLabel: { fontSize: 12, fontWeight: '700', color: '#64748B' },
+
   textInput: {
     backgroundColor: '#F8FAFB', borderRadius: 16, paddingHorizontal: 20,
     height: 56, borderWidth: 1, borderColor: '#F1F5F9',
     fontSize: 15, fontWeight: '600', color: '#1E293B',
   },
+
   disclaimer: { flexDirection: 'row', gap: 10, padding: 16, backgroundColor: '#F1F5F9', borderRadius: 16 },
   disclaimerText: { flex: 1, fontSize: 12, color: '#64748B', lineHeight: 18, fontWeight: '500' },
+
   footer: { padding: 24, paddingTop: 16, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
   withdrawBtn: {
     backgroundColor: Colors.agri.sabz, height: 56, borderRadius: 16,

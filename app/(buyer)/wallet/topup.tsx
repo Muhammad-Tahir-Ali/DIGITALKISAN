@@ -22,9 +22,9 @@ export default function TopUpScreen() {
 
   const handleTopUp = async () => {
     const numAmount = parseFloat(amount);
-    if (isNaN(numAmount) || numAmount <= 0) {
-      if (Platform.OS === 'web') window.alert('Invalid Amount: Please enter a valid amount to add.');
-      else Alert.alert('Invalid Amount', 'Please enter a valid amount to add.');
+    if (isNaN(numAmount) || numAmount < 100) {
+      if (Platform.OS === 'web') window.alert('Invalid Amount: Minimum top-up is ₨ 100.');
+      else Alert.alert('Invalid Amount', 'Minimum top-up amount is ₨ 100.');
       return;
     }
 
@@ -36,23 +36,18 @@ export default function TopUpScreen() {
 
     setLoading(true);
     try {
-      // For now, we'll just simulate a successful payment and update the balance on backend
-      await userService.topupWallet(numAmount, selectedMethod); 
-      
+      await userService.topupWallet(numAmount, selectedMethod);
       const successMsg = `₨ ${numAmount.toLocaleString()} has been added to your wallet!`;
       if (Platform.OS === 'web') {
         window.alert(`Success: ${successMsg}`);
         router.back();
       } else {
-        Alert.alert(
-          'Success',
-          successMsg,
-          [{ text: 'Great!', onPress: () => router.back() }]
-        );
+        Alert.alert('Top-Up Successful', successMsg, [{ text: 'Great!', onPress: () => router.back() }]);
       }
-    } catch (error) {
-      if (Platform.OS === 'web') window.alert('Error: Failed to add money. Please try again.');
-      else Alert.alert('Error', 'Failed to add money. Please try again.');
+    } catch (error: any) {
+      const msg = error?.response?.data?.message ?? 'Failed to add money. Please try again.';
+      if (Platform.OS === 'web') window.alert(`Error: ${msg}`);
+      else Alert.alert('Top-Up Failed', msg);
     } finally {
       setLoading(false);
     }

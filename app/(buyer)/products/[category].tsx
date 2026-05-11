@@ -61,7 +61,7 @@ export default function CategoryProductsScreen() {
     try {
       const filters: Record<string, string | number> = {};
       if (category && category !== 'All') {
-        filters.category = category;
+        filters.category = category.toLowerCase();
       }
       const data = await productService.getAll(filters);
       setProducts(data);

@@ -89,9 +89,16 @@ export default function CheckoutScreen() {
         })
       );
 
-      await Promise.all(orderPromises);
+      const orders = await Promise.all(orderPromises);
       clearCart();
-      router.replace('/(buyer)/order-confirmed' as any);
+      router.replace({
+        pathname: '/(buyer)/order-confirmed',
+        params: {
+          orderId: orders[0]._id,
+          totalAmount: grandTotal.toString(),
+          paymentMethod: selectedPayment,
+        },
+      } as any);
     } catch (e: any) {
       const errorMsg = e?.response?.data?.message ?? 'Something went wrong. Please try again.';
       if (Platform.OS === 'web') window.alert(`Order Failed: ${errorMsg}`);

@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View, Text, TouchableOpacity,
   ScrollView, Platform, Image, TextInput
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Bell, ShoppingCart, Search, Wheat, Carrot, Apple, Leaf, Star, ShieldCheck, Repeat } from 'lucide-react-native';
+import { Bell, ShoppingCart, Search, X, Wheat, Carrot, Apple, Leaf, Star, ShieldCheck, Repeat } from 'lucide-react-native';
 import { Colors } from '@/constants/colors';
 import { MOCK_CATEGORIES } from '@/constants/mockData';
 import { useCartStore } from '@/store/cartStore';
@@ -39,9 +39,17 @@ export default function BuyerHome() {
     }).catch(() => {}).finally(() => setLoading(false));
   }, []);
 
-  const freshlyListed = searchQuery.trim() 
-    ? products.filter(p => p.title.toLowerCase().includes(searchQuery.toLowerCase()) || p.category.toLowerCase().includes(searchQuery.toLowerCase()))
-    : products.slice(0, 10);
+  const isSearching = searchQuery.trim().length > 0;
+
+  const displayedProducts = useMemo(() => {
+    if (!isSearching) return products;
+    const q = searchQuery.toLowerCase().trim();
+    return products.filter(p =>
+      p.title.toLowerCase().includes(q) ||
+      p.category.toLowerCase().includes(q) ||
+      (p.farmer?.name ?? '').toLowerCase().includes(q)
+    );
+  }, [products, searchQuery, isSearching]);
 
   return (
     <View className="flex-1 bg-background" style={{ paddingTop: Math.max(insets.top, Platform.OS === 'android' ? 40 : 0) }}>
@@ -81,62 +89,104 @@ export default function BuyerHome() {
       <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
         {/* ── SEARCH ── */}
         <View className="px-5 pt-6 pb-4">
-          <View className="flex-row items-center bg-surface h-12 rounded-2xl px-4 border border-border">
-            <Search size={20} color={Colors.textTertiary} />
-            <TextInput 
-              className="flex-1 ml-3 text-textSecondary font-medium text-sm"
-              placeholder="Search fresh produce..."
+          <View
+            className="flex-row items-center bg-surface h-12 rounded-2xl px-4 border"
+            style={{ borderColor: isSearching ? Colors.primary : Colors.border }}
+          >
+            <Search size={20} color={isSearching ? Colors.primary : Colors.textTertiary} />
+            <TextInput
+              className="flex-1 ml-3 text-textPrimary font-medium text-sm"
+              placeholder="Search produce, category, or farmer..."
               placeholderTextColor={Colors.textTertiary}
               value={searchQuery}
               onChangeText={setSearchQuery}
+              returnKeyType="search"
             />
-          </View>
-        </View>
-
-        {/* ── HERO BANNER ── */}
-        <View className="px-5 mb-6">
-          <View className="bg-primary rounded-3xl p-6 relative overflow-hidden flex-row items-center">
-            <View className="flex-1 z-10">
-              <View className="bg-white/20 self-start px-2 py-1 rounded border border-white/30 mb-3">
-                <Text className="text-[10px] font-bold text-white tracking-widest uppercase">Direct from farm</Text>
-              </View>
-              <Text className="text-2xl font-black text-white leading-7 mb-2">Fresh Harvest{'\n'}Best Prices</Text>
-              <Text className="text-xs text-white/80 font-medium">No middlemen, 100% verified.</Text>
-            </View>
-            <View className="absolute right-[-20px] bottom-[-20px] opacity-10" pointerEvents="none">
-              <Wheat size={160} color="#FFF" strokeWidth={1} />
-            </View>
-          </View>
-        </View>
-
-        {/* ── CATEGORIES ── */}
-        <View className="mb-8">
-          <View className="px-5 flex-row justify-between items-center mb-4">
-            <Text className="text-lg font-bold text-textPrimary">Categories</Text>
-            <TouchableOpacity onPress={() => router.push('/(buyer)/categories' as any)}>
-              <Text className="text-sm font-bold text-primary">See All</Text>
-            </TouchableOpacity>
-          </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 20, gap: 16 }}>
-            {MOCK_CATEGORIES.map(cat => (
-              <TouchableOpacity key={cat.id} className="items-center" onPress={() => router.push(`/(buyer)/products/${cat.name}` as any)}>
-                <View className="w-16 h-16 rounded-full bg-surface items-center justify-center border border-border shadow-sm mb-2">
-                  {getCategoryIcon(cat.name, Colors.primary)}
-                </View>
-                <Text className="text-xs font-bold text-textSecondary">{cat.name}</Text>
+            {isSearching && (
+              <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={8}>
+                <X size={18} color={Colors.textTertiary} />
               </TouchableOpacity>
-            ))}
-          </ScrollView>
+            )}
+          </View>
         </View>
 
-        {/* ── FRESHLY LISTED GRID ── */}
+        {/* ── HERO + CATEGORIES (hidden while searching) ── */}
+        {!isSearching && (
+          <>
+            {/* ── HERO BANNER ── */}
+            <View className="px-5 mb-6">
+              <View className="bg-primary rounded-3xl p-6 relative overflow-hidden flex-row items-center">
+                <View className="flex-1 z-10">
+                  <View className="bg-white/20 self-start px-2 py-1 rounded border border-white/30 mb-3">
+                    <Text className="text-[10px] font-bold text-white tracking-widest uppercase">Direct from farm</Text>
+                  </View>
+                  <Text className="text-2xl font-black text-white leading-7 mb-2">Fresh Harvest{'\n'}Best Prices</Text>
+                  <Text className="text-xs text-white/80 font-medium">No middlemen, 100% verified.</Text>
+                </View>
+                <View className="absolute right-[-20px] bottom-[-20px] opacity-10" pointerEvents="none">
+                  <Wheat size={160} color="#FFF" strokeWidth={1} />
+                </View>
+              </View>
+            </View>
+
+            {/* ── CATEGORIES ── */}
+            <View className="mb-8">
+              <View className="px-5 flex-row justify-between items-center mb-4">
+                <Text className="text-lg font-bold text-textPrimary">Categories</Text>
+                <TouchableOpacity onPress={() => router.push('/(buyer)/categories' as any)}>
+                  <Text className="text-sm font-bold text-primary">See All</Text>
+                </TouchableOpacity>
+              </View>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 20, gap: 16 }}>
+                {MOCK_CATEGORIES.map(cat => (
+                  <TouchableOpacity key={cat.id} className="items-center" onPress={() => router.push(`/(buyer)/products/${cat.name}` as any)}>
+                    <View className="w-16 h-16 rounded-full bg-surface items-center justify-center border border-border shadow-sm mb-2">
+                      {getCategoryIcon(cat.name, Colors.primary)}
+                    </View>
+                    <Text className="text-xs font-bold text-textSecondary">{cat.name}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          </>
+        )}
+
+        {/* ── PRODUCT GRID ── */}
         <View className="px-5 pb-8">
-          <Text className="text-lg font-bold text-textPrimary mb-4">Freshly Listed</Text>
+          {/* Section header */}
+          <View className="flex-row justify-between items-center mb-4">
+            <Text className="text-lg font-bold text-textPrimary">
+              {isSearching ? `Results for "${searchQuery.trim()}"` : 'Freshly Listed'}
+            </Text>
+            {isSearching && !loading && (
+              <Text className="text-xs font-bold text-textSecondary">
+                {displayedProducts.length} found
+              </Text>
+            )}
+          </View>
+
           {loading ? (
             <SkeletonLoader.ProductGrid count={4} />
+          ) : displayedProducts.length === 0 ? (
+            <View className="items-center py-12">
+              <View className="w-20 h-20 rounded-full bg-gray-100 items-center justify-center mb-4">
+                <Search size={36} color={Colors.textTertiary} />
+              </View>
+              <Text className="text-base font-bold text-textPrimary mb-1">No products found</Text>
+              <Text className="text-sm text-textSecondary text-center px-6 mb-5">
+                No results for "{searchQuery.trim()}". Try a different name or category.
+              </Text>
+              <TouchableOpacity
+                onPress={() => setSearchQuery('')}
+                className="px-6 py-3 rounded-2xl"
+                style={{ backgroundColor: Colors.primary }}
+              >
+                <Text className="text-white font-bold text-sm">Clear Search</Text>
+              </TouchableOpacity>
+            </View>
           ) : (
             <View className="flex-row flex-wrap justify-between">
-              {freshlyListed.map(item => (
+              {displayedProducts.map(item => (
                 <TouchableOpacity
                   key={item._id}
                   className="w-[48%] bg-surface rounded-2xl border border-border p-3 mb-4 shadow-sm"
@@ -144,19 +194,21 @@ export default function BuyerHome() {
                   activeOpacity={0.8}
                 >
                   <View className="aspect-square bg-gray-50 rounded-xl items-center justify-center mb-3 overflow-hidden">
-                     {item.images && item.images.length > 0 ? (
-                       <Image 
-                         source={{ uri: item.images[0] }} 
-                         style={{ width: '100%', height: '100%' }} 
-                         resizeMode="cover" 
-                       />
-                     ) : (
-                       <Wheat size={32} color={Colors.textTertiary} strokeWidth={1.5} />
-                     )}
+                    {item.images && item.images.length > 0 ? (
+                      <Image
+                        source={{ uri: item.images[0] }}
+                        style={{ width: '100%', height: '100%' }}
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <Wheat size={32} color={Colors.textTertiary} strokeWidth={1.5} />
+                    )}
                   </View>
                   <Text className="text-sm font-bold text-textPrimary mb-1" numberOfLines={1}>{item.title}</Text>
-                  <Text className="text-base font-black text-primary mb-2">₨{item.pricePerUnit}<Text className="text-xs text-textSecondary font-medium">/{item.unit}</Text></Text>
-                  
+                  <Text className="text-base font-black text-primary mb-2">
+                    ₨{item.pricePerUnit}
+                    <Text className="text-xs text-textSecondary font-medium">/{item.unit}</Text>
+                  </Text>
                   <View className="flex-row items-center justify-between">
                     <View className="flex-row items-center">
                       <Star size={12} color={Colors.warning} fill={Colors.warning} />
@@ -169,9 +221,6 @@ export default function BuyerHome() {
                   </View>
                 </TouchableOpacity>
               ))}
-              {freshlyListed.length === 0 && (
-                <Text className="text-sm text-textSecondary">No products found.</Text>
-              )}
             </View>
           )}
         </View>
