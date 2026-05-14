@@ -27,6 +27,7 @@ export default function ProductDetailScreen() {
     data: product,
     isLoading: loading,
     error: queryError,
+    refetch,
   } = useQuery<Product>({
     queryKey: ['product', id],
     queryFn: () => productService.getById(id as string),
@@ -122,10 +123,30 @@ export default function ProductDetailScreen() {
 
   if (error || !product) {
     return (
-      <View style={[styles.root, { alignItems: 'center', justifyContent: 'center' }]}>
-        <Text style={{ color: Colors.error, fontSize: 16 }}>{error || 'Product not found'}</Text>
-        <TouchableOpacity onPress={() => router.back()} style={{ marginTop: 20 }}>
-          <Text style={{ color: Colors.primary, fontWeight: '700' }}>Go Back</Text>
+      <View style={[styles.root, { alignItems: 'center', justifyContent: 'center', padding: 24 }]}>
+        <Stack.Screen options={{ headerShown: false }} />
+        {/* Back button */}
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={{ position: 'absolute', top: insets.top + 12, left: 16, width: 38, height: 38, borderRadius: 19, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center' }}
+        >
+          <Feather name="arrow-left" size={20} color={Colors.textPrimary} />
+        </TouchableOpacity>
+        <Feather name="wifi-off" size={40} color={Colors.textSecondary} />
+        <Text style={{ color: Colors.error, fontSize: 16, fontWeight: '700', marginTop: 16, textAlign: 'center' }}>
+          {error || 'Product not found'}
+        </Text>
+        <Text style={{ color: Colors.textSecondary, fontSize: 13, marginTop: 8, textAlign: 'center' }}>
+          Check your connection and try again.
+        </Text>
+        <TouchableOpacity
+          onPress={() => refetch()}
+          style={{ marginTop: 20, backgroundColor: Colors.primary, borderRadius: 12, paddingHorizontal: 24, paddingVertical: 12 }}
+        >
+          <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>Try Again</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => router.back()} style={{ marginTop: 12 }}>
+          <Text style={{ color: Colors.primary, fontWeight: '700', fontSize: 13 }}>Go Back</Text>
         </TouchableOpacity>
       </View>
     );

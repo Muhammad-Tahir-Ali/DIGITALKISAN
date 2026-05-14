@@ -2,7 +2,6 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
@@ -354,19 +353,27 @@ export default function RegisterScreen() {
 
             {role === 'farmer' && (
               <>
-                <Controller control={control} name="farmName" render={({ field: { onChange, value } }) => (
-                  <View className="mb-4">
-                    <Text className="text-textPrimary font-medium mb-1">Farm Name</Text>
-                    <TextInput className="border border-gray-200 rounded-xl h-12 px-4 bg-surface" placeholder="e.g. Green Acres" onChangeText={onChange} value={value} />
-                    {errors.farmName && <Text className="text-red-500 text-xs mt-1">{errors.farmName.message}</Text>}
-                  </View>
+                <Controller control={control} name="farmName" render={({ field: { onChange, onBlur, value } }) => (
+                  <Input
+                    label="Farm Name"
+                    icon="home"
+                    placeholder="e.g. Green Acres"
+                    error={errors.farmName?.message}
+                    onBlur={onBlur}
+                    onChangeText={onChange}
+                    value={value ?? ''}
+                  />
                 )} />
-                <Controller control={control} name="farmLocation" render={({ field: { onChange, value } }) => (
-                  <View className="mb-4">
-                    <Text className="text-textPrimary font-medium mb-1">Farm Location (Village/Tehsil)</Text>
-                    <TextInput className="border border-gray-200 rounded-xl h-12 px-4 bg-surface" placeholder="e.g. Chak 22, Okara" onChangeText={onChange} value={value} />
-                    {errors.farmLocation && <Text className="text-red-500 text-xs mt-1">{errors.farmLocation.message}</Text>}
-                  </View>
+                <Controller control={control} name="farmLocation" render={({ field: { onChange, onBlur, value } }) => (
+                  <Input
+                    label="Farm Location (Village/Tehsil)"
+                    icon="map-pin"
+                    placeholder="e.g. Chak 22, Okara"
+                    error={errors.farmLocation?.message}
+                    onBlur={onBlur}
+                    onChangeText={onChange}
+                    value={value ?? ''}
+                  />
                 )} />
                 
                 <View className="mb-4">
@@ -420,12 +427,16 @@ export default function RegisterScreen() {
                   {errors.businessType && <Text className="text-red-500 text-xs mt-1">{errors.businessType.message}</Text>}
                 </View>
                 {formData.businessType && formData.businessType !== 'Individual' && (
-                  <Controller control={control} name="businessName" render={({ field: { onChange, value } }) => (
-                    <View className="mb-4">
-                      <Text className="text-textPrimary font-medium mb-1">Business Name</Text>
-                      <TextInput className="border border-gray-200 rounded-xl h-12 px-4 bg-surface" placeholder="e.g. Al-Fatah Stores" onChangeText={onChange} value={value} />
-                      {errors.businessName && <Text className="text-red-500 text-xs mt-1">{errors.businessName.message}</Text>}
-                    </View>
+                  <Controller control={control} name="businessName" render={({ field: { onChange, onBlur, value } }) => (
+                    <Input
+                      label="Business Name"
+                      icon="briefcase"
+                      placeholder="e.g. Al-Fatah Stores"
+                      error={errors.businessName?.message}
+                      onBlur={onBlur}
+                      onChangeText={onChange}
+                      value={value ?? ''}
+                    />
                   )} />
                 )}
               </>
@@ -445,28 +456,42 @@ export default function RegisterScreen() {
                   {errors.vehicleType && <Text className="text-red-500 text-xs mt-1">{errors.vehicleType.message}</Text>}
                 </View>
 
-                <Controller control={control} name="vehicleCapacity" render={({ field: { onChange, value } }) => (
-                  <View className="mb-4">
-                    <Text className="text-textPrimary font-medium mb-1">Capacity (kg)</Text>
-                    <TextInput className="border border-gray-200 rounded-xl h-12 px-4 bg-surface" keyboardType="numeric" placeholder="e.g. 500" onChangeText={onChange} value={value} />
-                    {errors.vehicleCapacity && <Text className="text-red-500 text-xs mt-1">{errors.vehicleCapacity.message}</Text>}
-                  </View>
+                <Controller control={control} name="vehicleCapacity" render={({ field: { onChange, onBlur, value } }) => (
+                  <Input
+                    label="Capacity (kg)"
+                    icon="package"
+                    keyboardType="numeric"
+                    placeholder="e.g. 500"
+                    error={errors.vehicleCapacity?.message}
+                    onBlur={onBlur}
+                    onChangeText={onChange}
+                    value={value ?? ''}
+                  />
                 )} />
 
-                <Controller control={control} name="cnic" render={({ field: { onChange, value } }) => (
-                  <View className="mb-4">
-                    <Text className="text-textPrimary font-medium mb-1">CNIC Number</Text>
-                    <TextInput className="border border-gray-200 rounded-xl h-12 px-4 bg-surface" placeholder="XXXXX-XXXXXXX-X" keyboardType="numeric" onChangeText={onChange} value={value} />
-                    {errors.cnic && <Text className="text-red-500 text-xs mt-1">{errors.cnic.message}</Text>}
-                  </View>
+                <Controller control={control} name="cnic" render={({ field: { onChange, onBlur, value } }) => (
+                  <Input
+                    label="CNIC Number"
+                    icon="credit-card"
+                    placeholder="XXXXX-XXXXXXX-X"
+                    keyboardType="numeric"
+                    error={errors.cnic?.message}
+                    onBlur={onBlur}
+                    onChangeText={onChange}
+                    value={value ?? ''}
+                  />
                 )} />
 
-                <Controller control={control} name="licenseNumber" render={({ field: { onChange, value } }) => (
-                  <View className="mb-4">
-                    <Text className="text-textPrimary font-medium mb-1">Driving License Number</Text>
-                    <TextInput className="border border-gray-200 rounded-xl h-12 px-4 bg-surface" placeholder="Enter license #" onChangeText={onChange} value={value} />
-                    {errors.licenseNumber && <Text className="text-red-500 text-xs mt-1">{errors.licenseNumber.message}</Text>}
-                  </View>
+                <Controller control={control} name="licenseNumber" render={({ field: { onChange, onBlur, value } }) => (
+                  <Input
+                    label="Driving License Number"
+                    icon="file-text"
+                    placeholder="Enter license #"
+                    error={errors.licenseNumber?.message}
+                    onBlur={onBlur}
+                    onChangeText={onChange}
+                    value={value ?? ''}
+                  />
                 )} />
               </>
             )}

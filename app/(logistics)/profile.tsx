@@ -12,6 +12,9 @@ import { Colors } from '@/constants/colors';
 import userService, { WalletData } from '@/services/user.service';
 import orderService from '@/services/order.service';
 
+// Tab bar is position:absolute, so we must manually clear it
+const TAB_BAR_HEIGHT = Platform.OS === 'ios' ? 92 : 72;
+
 export default function LogisticsProfile() {
   const { user, logout } = useAuth();
   const router = useRouter();
@@ -62,7 +65,7 @@ export default function LogisticsProfile() {
   return (
     <ScrollView
       style={styles.root}
-      contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}
+      contentContainerStyle={{ paddingBottom: insets.bottom + TAB_BAR_HEIGHT + 24 }}
       showsVerticalScrollIndicator={false}
     >
       {/* Hero Header */}

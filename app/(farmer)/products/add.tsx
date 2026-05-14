@@ -40,6 +40,7 @@ export default function AddProductScreen() {
 
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [isSimulatingAI, setIsSimulatingAI] = useState(false);
+  const [isPickingImage, setIsPickingImage] = useState(false);
   const [prefilling, setPrefilling] = useState(isEditing);
   const [submissionStatus, setSubmissionStatus] = useState<{ type: 'success' | 'error' | 'pending'; title: string; message: string; productId?: string } | null>(null);
 
@@ -103,15 +104,19 @@ export default function AddProductScreen() {
   }, [productId]);
 
   const pickImage = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: false,
-      quality: 0.8,
-    });
+    setIsPickingImage(true);
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: false,
+        quality: 0.8,
+      });
 
-
-    if (!result.canceled) {
-      setImageUri(result.assets[0].uri);
+      if (!result.canceled) {
+        setImageUri(result.assets[0].uri);
+      }
+    } finally {
+      setIsPickingImage(false);
     }
   };
 
@@ -265,12 +270,18 @@ export default function AddProductScreen() {
           <Text style={styles.sectionLabel}>Crop Photography</Text>
           <Text style={styles.sectionDesc}>High quality photos get 3x more buyer interest.</Text>
           
-          <TouchableOpacity 
+          <TouchableOpacity
             onPress={pickImage}
             activeOpacity={0.8}
-            style={[styles.imagePlate, imageUri ? styles.imagePlateActive : null]}
+            disabled={isPickingImage || isSimulatingAI}
+            style={[styles.imagePlate, imageUri ? styles.imagePlateActive : null, (isPickingImage || isSimulatingAI) ? styles.imagePlateDisabled : null]}
           >
-            {imageUri ? (
+            {isPickingImage ? (
+              <View style={styles.uploadPlaceholder}>
+                <ActivityIndicator size="large" color={Colors.agri.sabz} />
+                <Text style={[styles.uploadTitle, { marginTop: 12 }]}>Opening Gallery...</Text>
+              </View>
+            ) : imageUri ? (
               <>
                  <Image source={{ uri: imageUri }} style={styles.fullImage}  />
                  <View style={styles.imageOverlay}>
@@ -400,10 +411,11 @@ export default function AddProductScreen() {
 
       {/* FINAL ACTION */}
       <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
-         <Button 
+         <Button
             label={isSimulatingAI ? 'Analyzing & Publishing...' : 'Confirm Listing'}
             onPress={handleSubmit(onSubmit)}
             loading={isSimulatingAI}
+            disabled={isSimulatingAI || isPickingImage}
             size="xl"
             fullWidth
             rightIcon={!isSimulatingAI && <Feather name="plus-circle" size={20} color="#fff" />}
@@ -439,6 +451,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden', justifyContent: 'center', alignItems: 'center',
   },
   imagePlateActive: { borderStyle: 'solid', borderColor: Colors.agri.sabz, backgroundColor: '#fff' },
+  imagePlateDisabled: { opacity: 0.6 },
   uploadPlaceholder: { alignItems: 'center' },
   uploadCircle: {
     width: 56, height: 56, borderRadius: 28, backgroundColor: '#fff',

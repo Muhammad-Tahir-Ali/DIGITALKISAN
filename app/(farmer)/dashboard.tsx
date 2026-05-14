@@ -57,11 +57,19 @@ export default function FarmerDashboard() {
     fetchAll();
 
     // Poll notifications every 30s to catch async AI / backend updates
+    let errorCount = 0;
     const interval = setInterval(async () => {
       try {
         const notifs = await notificationService.getMyNotifications();
         setNotifications(notifs);
-      } catch {}
+        errorCount = 0;
+      } catch (e) {
+        errorCount++;
+        if (errorCount >= 3) {
+          // Stop polling silently after 3 consecutive failures to avoid spam
+          clearInterval(interval);
+        }
+      }
     }, 30000);
 
     return () => clearInterval(interval);
@@ -259,7 +267,10 @@ export default function FarmerDashboard() {
                 <Text style={styles.orderMetaDot}>·</Text>
                 <Feather name="clock" size={11} color={Colors.textTertiary} />
                 <Text style={styles.orderMetaText}>
-                  {new Date(order.createdAt).toLocaleDateString('en-PK', { day: 'numeric', month: 'short' })}
+                  {new Date(order.createdAt).toLocaleString('en-PK', {
+                    month: 'short', day: 'numeric',
+                    hour: '2-digit', minute: '2-digit',
+                  })}
                 </Text>
               </View>
               <View style={styles.orderFooter}>

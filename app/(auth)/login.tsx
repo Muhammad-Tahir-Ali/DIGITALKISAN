@@ -96,7 +96,8 @@ export default function LoginScreen() {
   return (
     <KeyboardAvoidingView
       className="flex-1 bg-surface"
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'android' ? 0 : 0}
     >
       {/* ── HEADER ── */}
       <View className="px-6 pt-14 pb-6 flex-row items-center border-b border-border bg-surface">
@@ -118,9 +119,23 @@ export default function LoginScreen() {
       {/* ── FORM ── */}
       <ScrollView
         className="flex-1 px-6 pt-8"
+        contentContainerStyle={{ paddingBottom: 40 }}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
+        {/* Role Badge */}
+        <View className="items-center mb-6">
+          <View
+            className="flex-row items-center gap-x-2 px-5 py-2.5 rounded-full"
+            style={{ backgroundColor: config.bg, borderWidth: 1.5, borderColor: config.color + '55' }}
+          >
+            <config.Icon size={18} color={config.color} strokeWidth={2.5} />
+            <Text className="text-base font-bold" style={{ color: config.color }}>
+              Signing in as {config.label}
+            </Text>
+          </View>
+        </View>
+
         <Controller
           control={control}
           name="email"

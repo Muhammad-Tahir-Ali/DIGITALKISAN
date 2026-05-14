@@ -186,6 +186,8 @@ export default function BuyerOrdersScreen() {
             const isCancelling = cancellingId === item._id;
             const canCancel = item.status === 'pending' || item.status === 'paid';
             const canTrack  = item.status === 'in_transit';
+            const isDelivered = item.status === 'delivered';
+            const canRate   = isDelivered && !(item as any).rating;
 
             return (
               <TouchableOpacity
@@ -254,6 +256,39 @@ export default function BuyerOrdersScreen() {
                     >
                       <Feather name="map-pin" size={13} color={Colors.primary} />
                       <Text style={styles.trackBtnText}>Track</Text>
+                    </TouchableOpacity>
+                  )}
+
+                  {canRate && (
+                    <TouchableOpacity
+                      style={styles.rateBtn}
+                      onPress={() => router.push(`/(buyer)/orders/rate/${item._id}` as any)}
+                    >
+                      <Feather name="star" size={13} color="#D97706" />
+                      <Text style={styles.rateBtnText}>Rate</Text>
+                    </TouchableOpacity>
+                  )}
+
+                  {isDelivered && (
+                    <TouchableOpacity
+                      style={styles.reportBtn}
+                      onPress={() => {
+                        if (Platform.OS === 'web') {
+                          window.alert('To report an issue, contact us at support@digitalkisan.pk or WhatsApp +92-300-0000000');
+                        } else {
+                          Alert.alert(
+                            'Report Issue',
+                            'Contact our support team to report a problem with this order.',
+                            [
+                              { text: 'Cancel', style: 'cancel' },
+                              { text: 'Contact Support', onPress: () => {} },
+                            ],
+                          );
+                        }
+                      }}
+                    >
+                      <Feather name="alert-circle" size={13} color="#DC2626" />
+                      <Text style={styles.reportBtnText}>Report</Text>
                     </TouchableOpacity>
                   )}
 
@@ -361,6 +396,20 @@ const styles = StyleSheet.create({
     backgroundColor: `${Colors.primary}10`, borderWidth: 1, borderColor: `${Colors.primary}25`,
   },
   trackBtnText: { fontSize: 12, fontWeight: '700', color: Colors.primary },
+
+  rateBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10,
+    backgroundColor: '#FFFBEB', borderWidth: 1, borderColor: '#FDE68A',
+  },
+  rateBtnText: { fontSize: 12, fontWeight: '700', color: '#D97706' },
+
+  reportBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10,
+    backgroundColor: '#FEF2F2', borderWidth: 1, borderColor: '#FECACA',
+  },
+  reportBtnText: { fontSize: 12, fontWeight: '700', color: '#DC2626' },
 
   detailBtn: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',

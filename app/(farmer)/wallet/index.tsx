@@ -93,7 +93,7 @@ export default function FarmerWalletScreen() {
             <View style={styles.miniStats}>
               <View style={styles.miniStat}>
                 <Text style={styles.miniStatVal}>₨ {wallet?.inEscrow.toLocaleString() ?? '0'}</Text>
-                <Text style={styles.miniStatLabel}>In Escrow</Text>
+                <Text style={styles.miniStatLabel}>Pending{'\n'}Delivery</Text>
               </View>
               <View style={styles.miniDivider} />
               <View style={styles.miniStat}>
@@ -141,6 +141,13 @@ export default function FarmerWalletScreen() {
                 Funds are released automatically within 24 hours of delivery confirmation.
               </Text>
             </View>
+          </View>
+
+          {/* Platform Fee Info */}
+          <View style={styles.feeInfoCard}>
+            <Text style={styles.feeInfoText}>
+              Platform fee: 5% is deducted from each sale. Shown amounts reflect your net earnings.
+            </Text>
           </View>
 
           {/* Recent Earnings */}
@@ -235,6 +242,15 @@ const styles = StyleSheet.create({
   },
   infoTitle: { fontSize: 13, fontWeight: '800', color: '#1E40AF', marginBottom: 4 },
   infoDesc: { fontSize: 12, color: '#3B82F6', lineHeight: 18, fontWeight: '500' },
+
+  feeInfoCard: {
+    marginHorizontal: 20, marginBottom: 16,
+    backgroundColor: '#FFFBEB', borderRadius: 12, padding: 12,
+    borderWidth: 1, borderColor: '#FCD34D',
+  },
+  feeInfoText: {
+    fontSize: 12, color: '#92400E', fontWeight: '600', lineHeight: 18,
+  },
 
   sectionHeader: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',

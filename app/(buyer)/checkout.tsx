@@ -28,6 +28,7 @@ export default function CheckoutScreen() {
   const [selectedPayment, setSelectedPayment] = useState('wallet');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [walletBalance, setWalletBalance] = useState<number>(0);
+  const [addressError, setAddressError] = useState<string | null>(null);
 
   useEffect(() => {
     userService.getWallet().then(data => {
@@ -45,10 +46,10 @@ export default function CheckoutScreen() {
   const handleNext = async () => {
     if (step === 1) {
       if (!deliveryAddress.trim()) {
-        if (Platform.OS === 'web') window.alert('Address Required: Please enter your delivery address.');
-        else Alert.alert('Address Required', 'Please enter your delivery address.');
+        setAddressError('Please enter your delivery address.');
         return;
       }
+      setAddressError(null);
       setStep(2);
       return;
     }
@@ -160,19 +161,22 @@ export default function CheckoutScreen() {
           <View>
             <Text style={styles.stepTitle}>Delivery Address</Text>
 
-            <View style={styles.addressInputWrap}>
-              <Feather name="map-pin" size={20} color={Colors.agri.sabz} style={{ marginRight: 12 }} />
+            <View style={[styles.addressInputWrap, addressError ? { borderColor: '#EF4444' } : undefined]}>
+              <Feather name="map-pin" size={20} color={addressError ? '#EF4444' : Colors.agri.sabz} style={{ marginRight: 12 }} />
               <TextInput
                 style={styles.addressInput}
                 placeholder="Enter full delivery address..."
                 placeholderTextColor="#94A3B8"
                 value={deliveryAddress}
-                onChangeText={setDeliveryAddress}
+                onChangeText={(t) => { setDeliveryAddress(t); if (t.trim()) setAddressError(null); }}
                 multiline
                 numberOfLines={3}
                 textAlignVertical="top"
               />
             </View>
+            {addressError ? (
+              <Text style={{ color: '#EF4444', fontSize: 12, marginTop: -12, marginBottom: 12, marginLeft: 4 }}>{addressError}</Text>
+            ) : null}
 
             <View style={styles.noteBox}>
               <Text style={styles.noteLabel}>Delivery Instructions (optional)</Text>
@@ -228,7 +232,9 @@ export default function CheckoutScreen() {
                     {selectedPayment === pay.id && <View style={styles.radioInner} />}
                   </View>
                 ) : (
-                  <Feather name="lock" size={14} color="#CBD5E1" />
+                  <View style={{ backgroundColor: '#E5E7EB', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 }}>
+                    <Text style={{ color: '#6B7280', fontSize: 10, fontWeight: '700' }}>Coming Soon</Text>
+                  </View>
                 )}
               </TouchableOpacity>
             ))}

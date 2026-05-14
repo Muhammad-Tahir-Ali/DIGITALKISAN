@@ -174,7 +174,7 @@ export default function BuyerWalletScreen() {
                 key={order._id}
                 style={styles.escrowCard}
                 onPress={() => router.push(`/(buyer)/orders/${order._id}` as any)}
-                activeOpacity={0.85}
+                activeOpacity={0.7}
               >
                 <View style={styles.escrowCardLeft}>
                   <View style={styles.escrowIconWrap}>
@@ -189,6 +189,7 @@ export default function BuyerWalletScreen() {
                         day: 'numeric', month: 'short',
                       })} · {order.quantity} units
                     </Text>
+                    <Text style={styles.escrowTapHint}>Tap to view order</Text>
                   </View>
                 </View>
                 <View style={styles.escrowRight}>
@@ -198,6 +199,7 @@ export default function BuyerWalletScreen() {
                       {STATUS_LABEL[order.status] ?? order.status}
                     </Text>
                   </View>
+                  <Feather name="chevron-right" size={16} color="#93C5FD" style={{ marginTop: 2 }} />
                 </View>
               </TouchableOpacity>
             ))
@@ -278,6 +280,7 @@ const styles = StyleSheet.create({
   },
   escrowProduct: { fontSize: 13, fontWeight: '700', color: '#1E293B', marginBottom: 2 },
   escrowDate: { fontSize: 11, color: Colors.textSecondary, fontWeight: '500' },
+  escrowTapHint: { fontSize: 10, color: '#93C5FD', fontWeight: '600', marginTop: 3 },
   escrowRight: { alignItems: 'flex-end', gap: 4 },
   escrowAmount: { fontSize: 15, fontWeight: '900', color: '#1E40AF' },
   escrowStatusChip: {
