@@ -1,17 +1,18 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import {
   View, Text, TouchableOpacity,
-  ScrollView, Platform, Image, TextInput
+  ScrollView, Platform, TextInput, FlatList,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { useQuery } from '@tanstack/react-query';
 import { Bell, ShoppingCart, Search, X, Wheat, Carrot, Apple, Leaf, Star, ShieldCheck, Repeat } from 'lucide-react-native';
 import { Colors } from '@/constants/colors';
 import { MOCK_CATEGORIES } from '@/constants/mockData';
 import { useCartStore } from '@/store/cartStore';
 import productService, { Product } from '@/services/product.service';
 import { useAuthStore } from '@/store/authStore';
-import { SkeletonLoader } from '@/components/ui';
+import { SkeletonLoader, LazyImage } from '@/components/ui';
 
 // Map mock categories to Lucide icons
 const getCategoryIcon = (name: string, color: string) => {
@@ -24,20 +25,55 @@ const getCategoryIcon = (name: string, color: string) => {
   }
 };
 
+// Memoized product card to avoid re-rendering every card on every list update.
+const ProductCard = React.memo(function ProductCard({
+  item, onPress,
+}: { item: Product; onPress: (id: string) => void }) {
+  return (
+    <TouchableOpacity
+      className="w-[48%] bg-surface rounded-2xl border border-border p-3 mb-4 shadow-sm"
+      onPress={() => onPress(item._id)}
+      activeOpacity={0.8}
+    >
+      <View className="aspect-square rounded-xl mb-3 overflow-hidden">
+        <LazyImage
+          uri={item.images?.[0]}
+          style={{ width: '100%', height: '100%' }}
+          fallback={<Wheat size={32} color={Colors.textTertiary} strokeWidth={1.5} />}
+        />
+      </View>
+      <Text className="text-sm font-bold text-textPrimary mb-1" numberOfLines={1}>{item.title}</Text>
+      <Text className="text-base font-black text-primary mb-2">
+        ₨{item.pricePerUnit}
+        <Text className="text-xs text-textSecondary font-medium">/{item.unit}</Text>
+      </Text>
+      <View className="flex-row items-center justify-between">
+        <View className="flex-row items-center">
+          <Star size={12} color={Colors.warning} fill={Colors.warning} />
+          <Text className="text-xs font-bold text-textSecondary ml-1">{item.rating}</Text>
+        </View>
+        <View className="flex-row items-center bg-green-50 px-2 py-1 rounded">
+          <ShieldCheck size={10} color={Colors.success} />
+          <Text className="text-[9px] font-bold text-success ml-1">Verified</Text>
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+});
+
 export default function BuyerHome() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const totalItems = useCartStore(s => s.totalItems);
   const user = useAuthStore(s => s.user);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
 
-  useEffect(() => {
-    productService.getAll().then(data => {
-      setProducts(data);
-    }).catch(() => {}).finally(() => setLoading(false));
-  }, []);
+  // React Query: caches the product list (5min staleTime in root config), avoids
+  // refetching when navigating back to home, and shares cache with detail screen.
+  const { data: products = [], isLoading: loading } = useQuery<Product[]>({
+    queryKey: ['products', 'all'],
+    queryFn: () => productService.getAll(),
+  });
 
   const isSearching = searchQuery.trim().length > 0;
 
@@ -50,6 +86,11 @@ export default function BuyerHome() {
       (p.farmer?.name ?? '').toLowerCase().includes(q)
     );
   }, [products, searchQuery, isSearching]);
+
+  const navigateToDetail = useCallback(
+    (productId: string) => router.push(`/(buyer)/products/detail/${productId}` as any),
+    [router]
+  );
 
   return (
     <View className="flex-1 bg-background" style={{ paddingTop: Math.max(insets.top, Platform.OS === 'android' ? 40 : 0) }}>
@@ -185,43 +226,22 @@ export default function BuyerHome() {
               </TouchableOpacity>
             </View>
           ) : (
-            <View className="flex-row flex-wrap justify-between">
-              {displayedProducts.map(item => (
-                <TouchableOpacity
-                  key={item._id}
-                  className="w-[48%] bg-surface rounded-2xl border border-border p-3 mb-4 shadow-sm"
-                  onPress={() => router.push(`/(buyer)/products/detail/${item._id}` as any)}
-                  activeOpacity={0.8}
-                >
-                  <View className="aspect-square bg-gray-50 rounded-xl items-center justify-center mb-3 overflow-hidden">
-                    {item.images && item.images.length > 0 ? (
-                      <Image
-                        source={{ uri: item.images[0] }}
-                        style={{ width: '100%', height: '100%' }}
-                        resizeMode="cover"
-                      />
-                    ) : (
-                      <Wheat size={32} color={Colors.textTertiary} strokeWidth={1.5} />
-                    )}
-                  </View>
-                  <Text className="text-sm font-bold text-textPrimary mb-1" numberOfLines={1}>{item.title}</Text>
-                  <Text className="text-base font-black text-primary mb-2">
-                    ₨{item.pricePerUnit}
-                    <Text className="text-xs text-textSecondary font-medium">/{item.unit}</Text>
-                  </Text>
-                  <View className="flex-row items-center justify-between">
-                    <View className="flex-row items-center">
-                      <Star size={12} color={Colors.warning} fill={Colors.warning} />
-                      <Text className="text-xs font-bold text-textSecondary ml-1">{item.rating}</Text>
-                    </View>
-                    <View className="flex-row items-center bg-green-50 px-2 py-1 rounded">
-                      <ShieldCheck size={10} color={Colors.success} />
-                      <Text className="text-[9px] font-bold text-success ml-1">Verified</Text>
-                    </View>
-                  </View>
-                </TouchableOpacity>
-              ))}
-            </View>
+            // FlatList virtualizes off-screen rows so 100+ products stay smooth.
+            // scrollEnabled={false} because it's inside a parent ScrollView.
+            <FlatList
+              data={displayedProducts}
+              keyExtractor={item => item._id}
+              numColumns={2}
+              columnWrapperStyle={{ justifyContent: 'space-between' }}
+              renderItem={({ item }) => (
+                <ProductCard item={item} onPress={navigateToDetail} />
+              )}
+              scrollEnabled={false}
+              initialNumToRender={6}
+              windowSize={5}
+              removeClippedSubviews
+              maxToRenderPerBatch={8}
+            />
           )}
         </View>
       </ScrollView>

@@ -122,7 +122,8 @@ export default function OrderDetailScreen() {
 
   const showCancel = isPending || isPaid;
   const showTrack  = isInTransit;
-  const showFooter = showCancel || showTrack;
+  const showRate   = isDelivered;
+  const showFooter = showCancel || showTrack || showRate;
 
   return (
     <View className="flex-1 bg-background" style={{ paddingTop: insets.top }}>
@@ -268,6 +269,15 @@ export default function OrderDetailScreen() {
               variant="primary"
               label="Track Order"
               onPress={() => router.push(`/(buyer)/orders/tracking/${order._id}` as any)}
+              style={{ flex: 1 }}
+              size="lg"
+            />
+          )}
+          {showRate && (
+            <Button
+              variant="primary"
+              label="Rate this Order"
+              onPress={() => router.push(`/(buyer)/orders/rate/${order._id}` as any)}
               style={{ flex: 1 }}
               size="lg"
             />

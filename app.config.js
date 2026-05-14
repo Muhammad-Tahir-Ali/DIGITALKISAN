@@ -49,6 +49,13 @@ export default {
         {
           "locationAlwaysAndWhenInUsePermission": "Digital Kisan needs your location to find nearby delivery jobs."
         }
+      ],
+      [
+        "@stripe/stripe-react-native",
+        {
+          "merchantIdentifier": "merchant.com.digitalkisan.app",
+          "enableGooglePay": true
+        }
       ]
     ],
     experiments: {

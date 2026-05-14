@@ -1,14 +1,16 @@
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView,
   FlatList, StyleSheet, Dimensions,
-  NativeSyntheticEvent, NativeScrollEvent, Animated, Image, ActivityIndicator, Share, Alert
+  NativeSyntheticEvent, NativeScrollEvent, Animated, ActivityIndicator, Share, Alert
 } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
+import { useQuery } from '@tanstack/react-query';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '@/constants/colors';
 import { AiBadge } from '@/components/marketplace/AiBadge';
+import { LazyImage, SkeletonLoader } from '@/components/ui';
 import { useCartStore } from '@/store/cartStore';
 import productService, { Product } from '@/services/product.service';
 
@@ -19,19 +21,19 @@ export default function ProductDetailScreen() {
   const router  = useRouter();
   const insets  = useSafeAreaInsets();
 
-  const [product, setProduct] = useState<Product | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    productService.getById(id)
-      .then(p => {
-        setProduct(p);
-        setQty(Math.min(5, p.availableQuantity || 1));
-      })
-      .catch(err => setError('Failed to load product details'))
-      .finally(() => setLoading(false));
-  }, [id]);
+  // React Query: caches per-id, dedupes, and never returns the previous id's
+  // data while a new one is loading (no more stale-data flash).
+  const {
+    data: product,
+    isLoading: loading,
+    error: queryError,
+  } = useQuery<Product>({
+    queryKey: ['product', id],
+    queryFn: () => productService.getById(id as string),
+    enabled: !!id,
+    staleTime: 5 * 60 * 1000,
+  });
+  const error = queryError ? 'Failed to load product details' : null;
 
   const addItem     = useCartStore((s) => s.addItem);
   const totalItems  = useCartStore((s) => s.totalItems);
@@ -40,6 +42,18 @@ export default function ProductDetailScreen() {
   const [slideIndex,  setSlideIndex]  = useState(0);
   const [isWishlisted, setIsWishlisted] = useState(false);
   const [addedAnim]   = useState(new Animated.Value(1));
+
+  // Reset all local state when navigating between products so the previous
+  // product's qty/slide/wishlist state doesn't leak into the next one.
+  useEffect(() => {
+    setSlideIndex(0);
+    setIsWishlisted(false);
+  }, [id]);
+
+  // Initialise qty sensibly once the new product loads.
+  useEffect(() => {
+    if (product) setQty(Math.min(5, product.availableQuantity || 1));
+  }, [product]);
 
   // ── Carousel scroll tracking
   const onCarouselScroll = useCallback(
@@ -86,8 +100,22 @@ export default function ProductDetailScreen() {
 
   if (loading) {
     return (
-      <View style={[styles.root, { alignItems: 'center', justifyContent: 'center' }]}>
-        <ActivityIndicator size="large" color={Colors.primary} />
+      <View style={styles.root}>
+        <Stack.Screen options={{ headerShown: false }} />
+        <View style={[styles.slide, { width: SW, backgroundColor: '#F1F5F9' }]}>
+          <ActivityIndicator color={Colors.primary} />
+        </View>
+        <View style={[styles.contentCard, { gap: 12 }]}>
+          <SkeletonLoader.Box height={20} borderRadius={6} />
+          <SkeletonLoader.Box height={32} borderRadius={8} />
+          <SkeletonLoader.Box height={80} borderRadius={16} />
+          <SkeletonLoader.Box height={120} borderRadius={16} />
+        </View>
+        <View style={[styles.overlayActions, { top: insets.top + 12 }]}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.overlayBtn}>
+            <Feather name="arrow-left" size={20} color={Colors.textPrimary} />
+          </TouchableOpacity>
+        </View>
       </View>
     );
   }
@@ -136,10 +164,11 @@ export default function ProductDetailScreen() {
                     <Text style={styles.slideEmoji}>{emoji}</Text>
                   </View>
                 ) : (
-                  <Image 
-                    source={{ uri: img }} 
+                  <LazyImage
+                    uri={img}
                     style={styles.fullImage}
-                    resizeMode="cover"
+                    bgColor="#F0FDF4"
+                    fallback={<Text style={styles.slideEmoji}>{emoji}</Text>}
                   />
                 )}
               </View>

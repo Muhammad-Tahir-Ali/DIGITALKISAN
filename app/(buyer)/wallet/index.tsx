@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, ScrollView, StyleSheet,
-  TouchableOpacity, RefreshControl, Alert,
+  TouchableOpacity, RefreshControl,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
@@ -122,7 +122,7 @@ export default function BuyerWalletScreen() {
 
             <TouchableOpacity
               style={styles.actionBtn}
-              onPress={() => Alert.alert('Coming Soon', 'Withdrawals for buyers will be available soon.')}
+              onPress={() => router.push('/(buyer)/wallet/withdraw' as any)}
             >
               <View style={[styles.actionIcon, { backgroundColor: '#F0F9FF' }]}>
                 <Feather name="arrow-up-right" size={20} color="#0EA5E9" />

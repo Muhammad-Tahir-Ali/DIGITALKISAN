@@ -139,6 +139,49 @@ export function useAuth() {
   }, []);
 
   /**
+   * Request a password reset code by email. Never throws on unknown email
+   * — backend deliberately responds the same either way.
+   */
+  const requestPasswordReset = useCallback(async (email: string) => {
+    return authService.forgotPassword(email);
+  }, []);
+
+  /**
+   * Confirm reset with OTP + new password. On success this also signs the
+   * user in (tokens are persisted), so no separate login step is needed.
+   */
+  const confirmPasswordReset = useCallback(async (
+    email: string, code: string, newPassword: string,
+  ) => {
+    try {
+      store.setLoading(true);
+      store.setError(null);
+
+      const { user, token, refreshToken } = await authService.resetPassword({
+        email, code, newPassword,
+      });
+
+      if (Platform.OS === 'web') {
+        localStorage.setItem(TOKEN_KEY, token);
+        localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
+      } else {
+        await SecureStore.setItemAsync(TOKEN_KEY, token);
+        await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, refreshToken);
+      }
+
+      store.hydrate(user, token, refreshToken);
+      return user;
+    } catch (err: any) {
+      const message =
+        err?.response?.data?.message ?? 'Could not reset password. Please try again.';
+      store.setError(message);
+      throw err;
+    } finally {
+      store.setLoading(false);
+    }
+  }, []);
+
+  /**
    * Logout: clear store + remove tokens from SecureStore.
    */
   const logout = useCallback(async () => {
@@ -197,6 +240,8 @@ export function useAuth() {
     login,
     register,
     verifyRegistration,
+    requestPasswordReset,
+    confirmPasswordReset,
     logout,
     rehydrate,
     selectRole,

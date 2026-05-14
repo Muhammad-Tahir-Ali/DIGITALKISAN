@@ -156,6 +156,11 @@ export default function BuyerLayout() {
           title: 'History'
         }}
       />
+      <Tabs.Screen name="addresses" options={{ href: null, title: 'Saved Addresses' }} />
+      <Tabs.Screen name="language"  options={{ href: null, title: 'Language' }} />
+      <Tabs.Screen name="help"      options={{ href: null, title: 'Help Center' }} />
+      <Tabs.Screen name="about"     options={{ href: null, title: 'About' }} />
+      <Tabs.Screen name="orders/rate/[id]" options={{ href: null, title: 'Rate Order' }} />
     </Tabs>
   );
 }

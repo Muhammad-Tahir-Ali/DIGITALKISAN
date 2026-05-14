@@ -12,6 +12,8 @@ const nativeOnlyModules = {
   'react-native-maps': path.resolve(__dirname, 'mocks/react-native-maps.web.tsx'),
   // worklets-core uses JSI/TurboModules which don't exist on web → stub it out
   'react-native-worklets-core': path.resolve(__dirname, 'mocks/react-native-worklets-core.web.ts'),
+  // Stripe RN uses TurboModules — stub on web; use Stripe.js/Elements for web later.
+  '@stripe/stripe-react-native': path.resolve(__dirname, 'mocks/stripe-react-native.web.ts'),
 };
 
 const originalResolveRequest = config.resolver.resolveRequest;

@@ -1,11 +1,12 @@
 import React, { useCallback } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Plus, MapPin, ShieldCheck, Wheat } from 'lucide-react-native';
 import { Colors } from '@/constants/colors';
 import type { Product } from '@/services/product.service';
 import { useCartStore } from '@/store/cartStore';
 import { useToast } from '@/components/shared/Toast';
+import { LazyImage } from '@/components/ui';
 
 interface Props {
   item: Product;
@@ -47,17 +48,12 @@ export const ProductCard = React.memo(function ProductCard({ item }: Props) {
     <TouchableOpacity style={styles.card} onPress={handlePress} activeOpacity={0.9}>
       {/* ─── IMAGE AREA ─────────────────────────── */}
       <View style={styles.imageArea}>
-        {hasImage ? (
-          <Image
-            source={{ uri: item.images[0] }}
-            style={styles.image}
-            resizeMode="cover"
-          />
-        ) : (
-          <View style={styles.placeholderWrap}>
-            <Wheat size={40} color={Colors.green[300]} strokeWidth={1.5} />
-          </View>
-        )}
+        <LazyImage
+          uri={hasImage ? item.images[0] : undefined}
+          style={styles.image}
+          bgColor={Colors.green[50]}
+          fallback={<Wheat size={40} color={Colors.green[300]} strokeWidth={1.5} />}
+        />
 
         {/* Verified Badge */}
         <View style={styles.verifiedBadge}>

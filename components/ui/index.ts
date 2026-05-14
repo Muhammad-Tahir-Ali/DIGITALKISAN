@@ -14,3 +14,4 @@ export { SkeletonLoader } from './SkeletonLoader';
 export { EmptyState } from './EmptyState';
 export { StatusBadge } from './StatusBadge';
 export type { StatusVariant } from './StatusBadge';
+export { LazyImage } from './LazyImage';

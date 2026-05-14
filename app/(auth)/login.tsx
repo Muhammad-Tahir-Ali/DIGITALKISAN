@@ -158,7 +158,10 @@ export default function LoginScreen() {
 
         <TouchableOpacity
           className="self-end mb-8 mt-[-8px]"
-          onPress={() => Alert.alert('Coming Soon', 'Password reset will be available soon!')}
+          onPress={() => router.push({
+            pathname: '/(auth)/forgot-password' as any,
+            params: { role: roleKey },
+          })}
         >
           <Text className="text-sm font-bold" style={{ color: config.color }}>Forgot Password?</Text>
         </TouchableOpacity>

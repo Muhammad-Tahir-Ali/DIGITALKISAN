@@ -1,15 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, Alert, ScrollView,
-  StyleSheet, Platform, Switch,
+  StyleSheet, Platform, Switch, Linking,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/hooks/useAuth';
 import { Colors } from '@/constants/colors';
+import { SUPPORT } from '@/constants/support';
 import userService from '@/services/user.service';
+import orderService from '@/services/order.service';
+
+const KEY_NOTIFS    = '@digitalkisan:pref:notifs';
+const KEY_DARKMODE  = '@digitalkisan:pref:darkmode';
+const KEY_ADDRESSES = '@digitalkisan:saved_addresses';
 
 interface MenuRow {
   icon: string;
@@ -18,11 +25,12 @@ interface MenuRow {
   onPress?: () => void;
   danger?: boolean;
   toggle?: boolean;
+  toggleValue?: boolean;
+  onToggleChange?: (v: boolean) => void;
   badge?: string;
 }
 
-function SettingsRow({ icon, label, value, onPress, danger, toggle, badge }: MenuRow) {
-  const [enabled, setEnabled] = useState(true);
+function SettingsRow({ icon, label, value, onPress, danger, toggle, toggleValue, onToggleChange, badge }: MenuRow) {
   return (
     <TouchableOpacity
       style={styles.menuRow}
@@ -42,10 +50,10 @@ function SettingsRow({ icon, label, value, onPress, danger, toggle, badge }: Men
         {value && <Text style={styles.menuValue}>{value}</Text>}
         {toggle ? (
           <Switch
-            value={enabled}
-            onValueChange={setEnabled}
+            value={!!toggleValue}
+            onValueChange={onToggleChange}
             trackColor={{ false: '#E5E7EB', true: `${Colors.primary}60` }}
-            thumbColor={enabled ? Colors.primary : '#9CA3AF'}
+            thumbColor={toggleValue ? Colors.primary : '#9CA3AF'}
           />
         ) : (
           !danger && <Feather name="chevron-right" size={16} color="#CBD5E1" />
@@ -68,15 +76,92 @@ export default function BuyerProfile() {
   const { user, logout } = useAuth();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const [walletBalance, setWalletBalance] = useState<string>('...');
 
+  const [walletBalance, setWalletBalance] = useState<string>('...');
+  const [orderCount, setOrderCount] = useState<number | null>(null);
+  const [escrowCount, setEscrowCount] = useState<number>(0);
+  const [farmCount, setFarmCount] = useState<number | null>(null);
+  const [savedCount, setSavedCount] = useState<number>(0);
+  const [addressCount, setAddressCount] = useState<number>(0);
+  const [lang, setLang] = useState<'en' | 'ur'>('en');
+
+  const [notifsOn, setNotifsOn] = useState(true);
+  const [darkOn, setDarkOn]     = useState(false);
+
+  // Load prefs once
   useEffect(() => {
-    userService.getWallet().then(data => {
-      setWalletBalance(`₨ ${data.availableBalance.toLocaleString()}`);
-    }).catch(() => setWalletBalance('₨ 0'));
+    AsyncStorage.multiGet([KEY_NOTIFS, KEY_DARKMODE, '@digitalkisan:lang']).then(entries => {
+      const map = Object.fromEntries(entries);
+      if (map[KEY_NOTIFS] !== null) setNotifsOn(map[KEY_NOTIFS] === 'true');
+      if (map[KEY_DARKMODE] !== null) setDarkOn(map[KEY_DARKMODE] === 'true');
+      if (map['@digitalkisan:lang'] === 'ur') setLang('ur');
+    });
   }, []);
 
-  const handleComingSoon = () => Alert.alert('Coming Soon', 'This feature is currently under development!');
+  // Refresh data each time profile becomes focused (orders/wallet/addresses may change elsewhere)
+  useFocusEffect(
+    React.useCallback(() => {
+      let cancelled = false;
+
+      userService.getWallet()
+        .then(data => {
+          if (cancelled) return;
+          setWalletBalance(`₨ ${data.availableBalance.toLocaleString()}`);
+        })
+        .catch(() => !cancelled && setWalletBalance('₨ 0'));
+
+      orderService.getMyOrders()
+        .then(orders => {
+          if (cancelled) return;
+          setOrderCount(orders.length);
+          setEscrowCount(orders.filter(o => ['paid','bidding','in_transit'].includes(o.status)).length);
+          const uniqueFarmers = new Set(orders.map(o => o.farmer?._id).filter(Boolean));
+          setFarmCount(uniqueFarmers.size);
+          const totalSpent = orders
+            .filter(o => o.status === 'delivered')
+            .reduce((sum, o) => sum + o.totalPrice, 0);
+          setSavedCount(totalSpent);
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setOrderCount(0); setEscrowCount(0); setFarmCount(0); setSavedCount(0);
+        });
+
+      AsyncStorage.getItem(KEY_ADDRESSES)
+        .then(raw => {
+          if (cancelled) return;
+          const list = raw ? JSON.parse(raw) : [];
+          setAddressCount(Array.isArray(list) ? list.length : 0);
+        })
+        .catch(() => !cancelled && setAddressCount(0));
+
+      return () => { cancelled = true; };
+    }, [])
+  );
+
+  const handleNotifsToggle = async (v: boolean) => {
+    setNotifsOn(v);
+    await AsyncStorage.setItem(KEY_NOTIFS, v ? 'true' : 'false');
+  };
+  const handleDarkToggle = async (v: boolean) => {
+    setDarkOn(v);
+    await AsyncStorage.setItem(KEY_DARKMODE, v ? 'true' : 'false');
+    Alert.alert('Saved', 'Dark theme will activate in an upcoming release.');
+  };
+
+  const openWhatsApp = () => {
+    const url = `https://wa.me/${SUPPORT.whatsapp.replace(/[^\d]/g, '')}?text=Hi%2C%20I%20need%20help%20with%20DigitalKisan`;
+    Linking.openURL(url).catch(() => Alert.alert('Could not open WhatsApp'));
+  };
+
+  const openStoreReview = () => {
+    const url = Platform.select({
+      ios: `itms-apps://itunes.apple.com/app/id${SUPPORT.iosAppId}?action=write-review`,
+      android: `market://details?id=${SUPPORT.androidPackage}`,
+      default: SUPPORT.webStoreUrl,
+    }) as string;
+    Linking.openURL(url).catch(() => Linking.openURL(SUPPORT.webStoreUrl).catch(() => {}));
+  };
 
   const handleLogout = () => {
     if (Platform.OS === 'web') {
@@ -84,7 +169,6 @@ export default function BuyerProfile() {
       if (confirmed) logout();
       return;
     }
-
     Alert.alert(
       'Sign Out',
       'You will be logged out of your account. Are you sure?',
@@ -95,17 +179,22 @@ export default function BuyerProfile() {
     );
   };
 
+  const formatSpent = (n: number) => {
+    if (n >= 100000) return `${(n / 100000).toFixed(1)}L`;
+    if (n >= 1000) return `${(n / 1000).toFixed(1)}K`;
+    return n.toString();
+  };
+
   const stats = [
-    { label: 'Orders', value: '12', icon: '📦' },
-    { label: 'Saved ₨', value: '4.2K', icon: '💰' },
-    { label: 'Farms', value: '6', icon: '🌾' },
+    { label: 'Orders',  value: orderCount === null ? '–' : String(orderCount), icon: '📦' },
+    { label: 'Spent ₨', value: savedCount > 0 ? formatSpent(savedCount) : '0',  icon: '💰' },
+    { label: 'Farmers', value: farmCount === null ? '–' : String(farmCount),   icon: '🌾' },
   ];
 
   return (
     <View style={styles.root}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
 
-        {/* ── HERO HEADER ──────────────────────────────────────── */}
         <View style={[styles.heroContainer, { paddingTop: insets.top + 24 }]}>
           <LinearGradient
             colors={['#052e16', '#14532d', '#166534']}
@@ -113,37 +202,38 @@ export default function BuyerProfile() {
             end={{ x: 1, y: 1 }}
             style={StyleSheet.absoluteFill}
           />
-          {/* Decorative circles */}
           <View style={styles.heroCircle1} />
           <View style={styles.heroCircle2} />
 
           <View style={styles.heroTop}>
             <Text style={styles.heroTitle}>My Profile</Text>
-            <TouchableOpacity style={styles.editBtn}>
+            <TouchableOpacity
+              style={styles.editBtn}
+              onPress={() => router.push('/(auth)/edit-profile' as any)}
+            >
               <Feather name="edit-2" size={14} color="#fff" />
             </TouchableOpacity>
           </View>
 
-          {/* Avatar */}
           <View style={styles.avatarWrap}>
             <View style={styles.avatar}>
               <Text style={styles.avatarEmoji}>👤</Text>
             </View>
-            <View style={styles.verifiedBadge}>
-              <Feather name="check" size={10} color="#fff" />
-            </View>
+            {user?.isVerified && (
+              <View style={styles.verifiedBadge}>
+                <Feather name="check" size={10} color="#fff" />
+              </View>
+            )}
           </View>
 
           <Text style={styles.heroName}>{user?.name ?? 'Guest Buyer'}</Text>
           <Text style={styles.heroEmail}>{user?.email ?? 'Not logged in'}</Text>
 
-          {/* Role Chip */}
           <View style={styles.roleChip}>
             <View style={styles.roleDot} />
-            <Text style={styles.roleText}>Verified Buyer</Text>
+            <Text style={styles.roleText}>{user?.isVerified ? 'Verified Buyer' : 'Buyer'}</Text>
           </View>
 
-          {/* Stats Row */}
           <View style={styles.statsRow}>
             {stats.map((stat, i) => (
               <React.Fragment key={stat.label}>
@@ -159,38 +249,63 @@ export default function BuyerProfile() {
         </View>
 
         <View style={styles.content}>
-          {/* ── ACCOUNT ──────────────────────────────────────────── */}
           <SectionCard title="Account">
-            <SettingsRow icon="user" label="Full Name" value={user?.name ?? '–'} onPress={handleComingSoon} />
-            <SettingsRow icon="phone" label="Phone Number" value={user?.phone ?? 'Not set'} onPress={handleComingSoon} />
-            <SettingsRow icon="mail" label="Email" value={user?.email?.split('@')[0] + '…'} onPress={handleComingSoon} />
-            <SettingsRow icon="map-pin" label="Saved Addresses" badge="2" onPress={handleComingSoon} />
+            <SettingsRow
+              icon="user"
+              label="Full Name"
+              value={user?.name ?? '–'}
+              onPress={() => router.push('/(auth)/edit-profile' as any)}
+            />
+            <SettingsRow
+              icon="phone"
+              label="Phone Number"
+              value={user?.phone ?? 'Not set'}
+              onPress={() => router.push('/(auth)/edit-profile' as any)}
+            />
+            <SettingsRow
+              icon="mail"
+              label="Email"
+              value={user?.email ?? '–'}
+              onPress={() => router.push('/(auth)/edit-profile' as any)}
+            />
+            <SettingsRow
+              icon="map-pin"
+              label="Saved Addresses"
+              badge={addressCount > 0 ? String(addressCount) : undefined}
+              onPress={() => router.push('/(buyer)/addresses' as any)}
+            />
           </SectionCard>
 
-          {/* ── ORDERS & WALLET ──────────────────────────────────── */}
           <SectionCard title="Orders & Wallet">
-            <SettingsRow icon="package" label="My Orders" onPress={() => router.push('/(buyer)/orders' as any)} />
-            <SettingsRow icon="credit-card" label="Wallet Balance" value={walletBalance} onPress={() => router.push('/(buyer)/wallet/topup' as any)} />
-            <SettingsRow icon="clock" label="Transaction History" onPress={() => router.push('/(buyer)/wallet/history')} />
-            <SettingsRow icon="shield" label="Escrow Status" badge="1 Active" onPress={handleComingSoon} />
+            <SettingsRow icon="package"     label="My Orders"          onPress={() => router.push('/(buyer)/orders' as any)} />
+            <SettingsRow icon="credit-card" label="Wallet Balance"     value={walletBalance} onPress={() => router.push('/(buyer)/wallet' as any)} />
+            <SettingsRow icon="clock"       label="Transaction History" onPress={() => router.push('/(buyer)/wallet/history' as any)} />
+            <SettingsRow
+              icon="shield"
+              label="Escrow Status"
+              badge={escrowCount > 0 ? `${escrowCount} Active` : undefined}
+              onPress={() => router.push('/(buyer)/wallet' as any)}
+            />
           </SectionCard>
 
-          {/* ── PREFERENCES ──────────────────────────────────────── */}
           <SectionCard title="Preferences">
-            <SettingsRow icon="bell" label="Push Notifications" toggle />
-            <SettingsRow icon="moon" label="Dark Mode" toggle />
-            <SettingsRow icon="globe" label="Language" value="English" onPress={handleComingSoon} />
+            <SettingsRow icon="bell"  label="Push Notifications" toggle toggleValue={notifsOn} onToggleChange={handleNotifsToggle} />
+            <SettingsRow icon="moon"  label="Dark Mode"          toggle toggleValue={darkOn}   onToggleChange={handleDarkToggle} />
+            <SettingsRow
+              icon="globe"
+              label="Language"
+              value={lang === 'ur' ? 'اردو' : 'English'}
+              onPress={() => router.push('/(buyer)/language' as any)}
+            />
           </SectionCard>
 
-          {/* ── SUPPORT ─────────────────────────────────────────── */}
           <SectionCard title="Support">
-            <SettingsRow icon="help-circle" label="Help Center" onPress={handleComingSoon} />
-            <SettingsRow icon="message-circle" label="Chat with Support" onPress={handleComingSoon} />
-            <SettingsRow icon="star" label="Rate DigitalKisan" onPress={handleComingSoon} />
-            <SettingsRow icon="info" label="About" value="v1.0.0" onPress={handleComingSoon} />
+            <SettingsRow icon="help-circle"    label="Help Center"        onPress={() => router.push('/(buyer)/help' as any)} />
+            <SettingsRow icon="message-circle" label="Chat with Support"  onPress={openWhatsApp} />
+            <SettingsRow icon="star"           label="Rate DigitalKisan"  onPress={openStoreReview} />
+            <SettingsRow icon="info"           label="About"              value="v1.0.0" onPress={() => router.push('/(buyer)/about' as any)} />
           </SectionCard>
 
-          {/* ── SIGN OUT ─────────────────────────────────────────── */}
           <TouchableOpacity style={styles.signOutBtn} onPress={handleLogout} activeOpacity={0.8}>
             <Feather name="log-out" size={16} color={Colors.error} />
             <Text style={styles.signOutText}>Sign Out</Text>
@@ -206,7 +321,6 @@ export default function BuyerProfile() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#F8FAFB' },
 
-  // Hero
   heroContainer: {
     paddingBottom: 32,
     paddingHorizontal: 24,
@@ -272,10 +386,8 @@ const styles = StyleSheet.create({
   statValue: { color: '#fff', fontSize: 18, fontWeight: '900' },
   statLabel: { color: 'rgba(255,255,255,0.6)', fontSize: 10, fontWeight: '600' },
 
-  // Content
   content: { flex: 1, paddingHorizontal: 16, paddingTop: 16 },
 
-  // Section
   sectionCard: {
     backgroundColor: '#fff',
     borderRadius: 20, marginBottom: 12,
@@ -290,7 +402,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16, paddingTop: 14, paddingBottom: 2,
   },
 
-  // Menu Row
   menuRow: {
     flexDirection: 'row', alignItems: 'center',
     paddingVertical: 14, paddingHorizontal: 16,
@@ -314,7 +425,6 @@ const styles = StyleSheet.create({
   },
   badgeText: { fontSize: 10, fontWeight: '800', color: Colors.primary },
 
-  // Sign Out
   signOutBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 8, padding: 16, marginTop: 8, marginBottom: 8,

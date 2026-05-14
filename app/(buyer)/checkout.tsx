@@ -39,9 +39,8 @@ export default function CheckoutScreen() {
   const items = useCartStore((s) => s.items);
   const totalPrice = useCartStore((s) => s.totalPrice);
   const clearCart = useCartStore((s) => s.clearCart);
-  const delivery = totalPrice > 0 ? 80 : 0;
-  const tax = +(totalPrice * 0.05).toFixed(2);
-  const grandTotal = totalPrice + delivery + tax;
+  // grandTotal equals totalPrice — delivery fee and tax are not yet charged by the backend
+  const grandTotal = totalPrice;
 
   const handleNext = async () => {
     if (step === 1) {
@@ -77,29 +76,34 @@ export default function CheckoutScreen() {
       return;
     }
 
-    // Step 3: Submit — Create real orders for each cart item
+    // Step 3: Submit — Create real orders sequentially with rollback on failure
     setIsSubmitting(true);
+    const createdOrders: { _id: string }[] = [];
     try {
-      const orderPromises = items.map(item =>
-        orderService.create({
+      for (const item of items) {
+        const order = await orderService.create({
           productId: item.productId,
           quantity: item.quantity,
           shippingAddress: { address: deliveryAddress.trim() },
           paymentGatewayRef: `${selectedPayment.toUpperCase()}_${Date.now()}`,
-        })
-      );
+        });
+        createdOrders.push(order);
+      }
 
-      const orders = await Promise.all(orderPromises);
       clearCart();
       router.replace({
         pathname: '/(buyer)/order-confirmed',
         params: {
-          orderId: orders[0]._id,
+          orderId: createdOrders[0]._id,
           totalAmount: grandTotal.toString(),
           paymentMethod: selectedPayment,
         },
       } as any);
     } catch (e: any) {
+      // Rollback any orders that were already created
+      if (createdOrders.length > 0) {
+        await Promise.allSettled(createdOrders.map(o => orderService.cancel(o._id)));
+      }
       const errorMsg = e?.response?.data?.message ?? 'Something went wrong. Please try again.';
       if (Platform.OS === 'web') window.alert(`Order Failed: ${errorMsg}`);
       else Alert.alert('Order Failed', errorMsg, [{ text: 'OK' }]);
@@ -256,14 +260,6 @@ export default function CheckoutScreen() {
                   <View style={styles.summaryItem}>
                     <Text style={styles.subTotalLabel}>Subtotal</Text>
                     <Text style={styles.subTotalVal}>₨ {totalPrice.toLocaleString()}</Text>
-                  </View>
-                  <View style={styles.summaryItem}>
-                    <Text style={styles.subTotalLabel}>Delivery Fee</Text>
-                    <Text style={styles.subTotalVal}>₨ {delivery}</Text>
-                  </View>
-                  <View style={styles.summaryItem}>
-                    <Text style={styles.subTotalLabel}>Processing / Tax</Text>
-                    <Text style={styles.subTotalVal}>₨ {tax}</Text>
                   </View>
                </View>
 

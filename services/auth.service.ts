@@ -92,6 +92,26 @@ const authService = {
   },
 
   /**
+   * Request a password reset code to be sent to the given email.
+   * Always resolves successfully — backend deliberately doesn't reveal whether
+   * the email exists (to prevent enumeration).
+   */
+  forgotPassword: async (email: string): Promise<{ message: string }> => {
+    const { data } = await api.post('/auth/forgot-password', { email });
+    return data;
+  },
+
+  /**
+   * Submit the OTP + new password. On success returns auth tokens (auto-login).
+   */
+  resetPassword: async (payload: {
+    email: string; code: string; newPassword: string;
+  }): Promise<AuthResponse> => {
+    const { data } = await api.post<BackendAuthResponse>('/auth/reset-password', payload);
+    return normalizeResponse(data);
+  },
+
+  /**
    * Refresh access token
    */
   refreshToken: async (

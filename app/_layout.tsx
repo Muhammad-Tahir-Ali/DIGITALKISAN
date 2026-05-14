@@ -9,10 +9,13 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { PaperProvider, MD3LightTheme } from 'react-native-paper';
+import { StripeProvider } from '@stripe/stripe-react-native';
 import { Theme } from '@/constants/theme';
 import { useAuth } from '@/hooks/useAuth';
 import { useCartStore } from '@/store/cartStore';
 import { ToastProvider } from '@/components/shared/Toast';
+
+const STRIPE_KEY = process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? '';
 import {
   useFonts,
   Inter_400Regular,
@@ -84,9 +87,14 @@ export default function RootLayout() {
   return (
     <QueryClientProvider client={queryClient}>
       <PaperProvider theme={paperTheme}>
-        <ToastProvider>
-          <RootLayoutNav />
-        </ToastProvider>
+        <StripeProvider
+          publishableKey={STRIPE_KEY}
+          merchantIdentifier="merchant.com.digitalkisan.app"
+        >
+          <ToastProvider>
+            <RootLayoutNav />
+          </ToastProvider>
+        </StripeProvider>
       </PaperProvider>
     </QueryClientProvider>
   );
