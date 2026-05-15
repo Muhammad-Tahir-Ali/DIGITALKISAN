@@ -1,9 +1,9 @@
 import React from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
-  StyleSheet, Dimensions, Alert, RefreshControl,
+  StyleSheet, Dimensions, RefreshControl,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -12,6 +12,7 @@ import { useAuthStore } from '@/store/authStore';
 import userService, { DashboardStats } from '@/services/user.service';
 import orderService, { Order } from '@/services/order.service';
 import notificationService, { Notification } from '@/services/notification.service';
+import productService from '@/services/product.service';
 import { SkeletonLoader, StatusBadge } from '@/components/ui';
 
 const { width } = Dimensions.get('window');
@@ -29,6 +30,7 @@ export default function FarmerDashboard() {
   const [stats, setStats] = React.useState<DashboardStats | null>(null);
   const [orders, setOrders] = React.useState<Order[]>([]);
   const [notifications, setNotifications] = React.useState<Notification[]>([]);
+  const [pendingAiCount, setPendingAiCount] = React.useState(0);
   const [loading, setLoading] = React.useState(true);
   const [refreshing, setRefreshing] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -37,14 +39,16 @@ export default function FarmerDashboard() {
     if (isRefresh) setRefreshing(true);
     setError(null);
     try {
-      const [statsData, ordersData, notifsData] = await Promise.all([
+      const [statsData, ordersData, notifsData, productsData] = await Promise.all([
         userService.getDashboardStats(),
         orderService.getMyOrders(),
         notificationService.getMyNotifications(),
+        productService.getMyProducts(),
       ]);
       setStats(statsData);
       setOrders(ordersData);
       setNotifications(notifsData);
+      setPendingAiCount(productsData.filter(p => p.status === 'pending_ai').length);
     } catch (e: any) {
       setError(e?.response?.data?.message ?? 'Failed to load dashboard. Pull down to retry.');
     } finally {
@@ -53,61 +57,32 @@ export default function FarmerDashboard() {
     }
   }, []);
 
-  React.useEffect(() => {
-    fetchAll();
+  // Re-fetch ALL data every time the screen gains focus (e.g. after adding a product or processing an order)
+  useFocusEffect(
+    React.useCallback(() => {
+      fetchAll();
 
-    // Poll notifications every 30s to catch async AI / backend updates
-    let errorCount = 0;
-    const interval = setInterval(async () => {
-      try {
-        const notifs = await notificationService.getMyNotifications();
-        setNotifications(notifs);
-        errorCount = 0;
-      } catch (e) {
-        errorCount++;
-        if (errorCount >= 3) {
-          // Stop polling silently after 3 consecutive failures to avoid spam
-          clearInterval(interval);
+      // Poll notifications every 30s to catch async AI / backend updates
+      let errorCount = 0;
+      const interval = setInterval(async () => {
+        try {
+          const notifs = await notificationService.getMyNotifications();
+          setNotifications(notifs);
+          errorCount = 0;
+        } catch (e) {
+          errorCount++;
+          if (errorCount >= 3) {
+            // Stop polling silently after 3 consecutive failures to avoid spam
+            clearInterval(interval);
+          }
         }
-      }
-    }, 30000);
+      }, 30000);
 
-    return () => clearInterval(interval);
-  }, [fetchAll]);
+      return () => clearInterval(interval);
+    }, [fetchAll])
+  );
 
   const unreadNotifs = notifications.filter(n => !n.isRead);
-
-  const handleNotificationsClick = async () => {
-    if (notifications.length === 0) {
-      Alert.alert('Notifications', 'You have no notifications.');
-      return;
-    }
-
-    // Show all unread first, then all notifications
-    const toShow = unreadNotifs.length > 0 ? unreadNotifs : notifications;
-
-    const showNext = (index: number) => {
-      if (index >= toShow.length) {
-        // All shown — mark all as read
-        if (unreadNotifs.length > 0) {
-          notificationService.markAllAsRead().catch(() => {});
-          setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
-        }
-        return;
-      }
-      const notif = toShow[index];
-      const isLast = index === toShow.length - 1;
-      Alert.alert(
-        notif.title,
-        notif.message,
-        [
-          { text: isLast ? 'Done' : 'Next', onPress: () => showNext(index + 1) },
-        ]
-      );
-    };
-
-    showNext(0);
-  };
 
   // Only show orders that need farmer action (new / unprocessed)
   const newOrders = orders.filter(o => o.status === 'pending' || o.status === 'paid');
@@ -156,7 +131,7 @@ export default function FarmerDashboard() {
             <Feather name="repeat" size={12} color="#fff" style={{ marginRight: 4 }} />
             <Text style={styles.switchText}>Switch to Buyer</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.iconBtn} onPress={handleNotificationsClick}>
+          <TouchableOpacity style={styles.iconBtn} onPress={() => router.push('/(farmer)/notifications' as any)}>
             <Feather name="bell" size={20} color="#fff" />
             {unreadNotifs.length > 0 && (
               <View style={styles.notifBadge}>
@@ -217,7 +192,29 @@ export default function FarmerDashboard() {
         )}
       </View>
 
-      {/* ── 3. QUICK ACTIONS ───────────────────────────────────── */}
+      {/* ── 3. UNDER REVIEW BANNER ─────────────────────────────── */}
+      {pendingAiCount > 0 && (
+        <View style={styles.section}>
+          <TouchableOpacity
+            style={styles.reviewBanner}
+            onPress={() => router.push('/(farmer)/under-review' as any)}
+            activeOpacity={0.8}
+          >
+            <View style={styles.reviewBannerLeft}>
+              <View style={styles.reviewPulseDot} />
+              <View>
+                <Text style={styles.reviewBannerTitle}>
+                  {pendingAiCount} listing{pendingAiCount > 1 ? 's' : ''} under AI review
+                </Text>
+                <Text style={styles.reviewBannerSub}>Tap to monitor progress</Text>
+              </View>
+            </View>
+            <Feather name="chevron-right" size={18} color={Colors.agri.sabz} />
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* ── 5. QUICK ACTIONS ───────────────────────────────────── */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Quick Actions</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.actionRow}>
@@ -228,7 +225,7 @@ export default function FarmerDashboard() {
         </ScrollView>
       </View>
 
-      {/* ── 4. NEW ORDERS ─────────────────────────────────────── */}
+      {/* ── 6. NEW ORDERS ─────────────────────────────────────── */}
       <View style={[styles.section, { marginBottom: 40 }]}>
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>New Orders</Text>
@@ -449,4 +446,17 @@ const styles = StyleSheet.create({
   },
   emptyText: { color: '#1E293B', fontSize: 14, fontWeight: '700', marginBottom: 4 },
   emptySubText: { color: '#94A3B8', fontSize: 12, fontWeight: '500' },
+
+  reviewBanner: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: '#F0FDF4', borderRadius: 16, padding: 16,
+    borderWidth: 1.5, borderColor: Colors.agri.sabz,
+  },
+  reviewBannerLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  reviewPulseDot: {
+    width: 10, height: 10, borderRadius: 5,
+    backgroundColor: Colors.agri.sabz,
+  },
+  reviewBannerTitle: { fontSize: 14, fontWeight: '800', color: '#14532D' },
+  reviewBannerSub: { fontSize: 12, color: Colors.agri.sabz, fontWeight: '500', marginTop: 1 },
 });
