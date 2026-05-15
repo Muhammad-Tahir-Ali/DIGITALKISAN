@@ -39,16 +39,19 @@ export default function FarmerDashboard() {
     if (isRefresh) setRefreshing(true);
     setError(null);
     try {
-      const [statsData, ordersData, notifsData, productsData] = await Promise.all([
+      const [statsData, ordersData, notifsData] = await Promise.all([
         userService.getDashboardStats(),
         orderService.getMyOrders(),
         notificationService.getMyNotifications(),
-        productService.getMyProducts(),
       ]);
       setStats(statsData);
       setOrders(ordersData);
       setNotifications(notifsData);
-      setPendingAiCount(productsData.filter(p => p.status === 'pending_ai').length);
+
+      // Fetch pending AI count independently so it never blocks the main dashboard
+      productService.getMyProducts()
+        .then(p => setPendingAiCount(p.filter(p => p.status === 'pending_ai').length))
+        .catch(() => {});
     } catch (e: any) {
       setError(e?.response?.data?.message ?? 'Failed to load dashboard. Pull down to retry.');
     } finally {
