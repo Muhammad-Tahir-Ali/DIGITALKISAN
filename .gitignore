@@ -1,0 +1,25 @@
+# Environment secrets — NEVER commit real .env files
+.env
+.env.local
+.env.production
+.env.staging
+.env.*.local
+**/.env
+**/.env.local
+**/.env.production
+**/.env.staging
+**/.env.*.local
+
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+web-build/
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
