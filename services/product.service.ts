@@ -32,7 +32,9 @@ export interface CreateProductPayload {
   unit: string;
   availableQuantity: number;
   images?: string[];
-  imageData?: string; // Base64 image payload for AI grading
+  imageDatas?: string[];
+  mimeTypes?: string[];
+  imageData?: string;
   mimeType?: string;
 }
 

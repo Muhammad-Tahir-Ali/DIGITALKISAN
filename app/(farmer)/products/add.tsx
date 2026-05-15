@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, ScrollView, Platform,
-  Alert, Image, KeyboardAvoidingView, StyleSheet, Dimensions, ActivityIndicator
+  Alert, Image, KeyboardAvoidingView, StyleSheet, ActivityIndicator,
+  InteractionManager,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useForm, Controller } from 'react-hook-form';
@@ -14,10 +15,9 @@ import { Colors } from '@/constants/colors';
 import { Button } from '@/components/ui';
 import { LinearGradient } from 'expo-linear-gradient';
 
-import aiService from '@/services/ai.service';
 import productService from '@/services/product.service';
 
-const { width } = Dimensions.get('window');
+const MAX_IMAGES = 5;
 
 const productSchema = z.object({
   name: z.string().min(2, 'Crop name is required'),
@@ -38,11 +38,16 @@ export default function AddProductScreen() {
   const { productId } = useLocalSearchParams<{ productId?: string }>();
   const isEditing = !!productId;
 
-  const [imageUri, setImageUri] = useState<string | null>(null);
+  const [selectedImages, setSelectedImages] = useState<string[]>([]);
   const [isSimulatingAI, setIsSimulatingAI] = useState(false);
   const [isPickingImage, setIsPickingImage] = useState(false);
   const [prefilling, setPrefilling] = useState(isEditing);
-  const [submissionStatus, setSubmissionStatus] = useState<{ type: 'success' | 'error' | 'pending'; title: string; message: string; productId?: string } | null>(null);
+  const [submissionStatus, setSubmissionStatus] = useState<{
+    type: 'success' | 'error' | 'pending';
+    title: string;
+    message: string;
+    productId?: string;
+  } | null>(null);
 
   const { control, handleSubmit, setValue, watch, reset, formState: { errors } } = useForm<ProductForm>({
     resolver: zodResolver(productSchema),
@@ -52,10 +57,10 @@ export default function AddProductScreen() {
   const selectedUnit = watch('unit');
   const selectedCategory = watch('category');
 
-  // Polling for AI status
+  // Poll for AI status after submission
   useEffect(() => {
     let interval: ReturnType<typeof setInterval>;
-    
+
     if (submissionStatus?.type === 'pending' && submissionStatus.productId) {
       interval = setInterval(async () => {
         try {
@@ -76,14 +81,12 @@ export default function AddProductScreen() {
             clearInterval(interval);
           }
         } catch (e) {
-          console.error("Error polling product status", e);
+          console.error('Error polling product status', e);
         }
-      }, 3000); // Poll every 3 seconds
+      }, 3000);
     }
 
-    return () => {
-      if (interval) clearInterval(interval);
-    };
+    return () => { if (interval) clearInterval(interval); };
   }, [submissionStatus]);
 
   // Pre-fill form when editing
@@ -97,70 +100,109 @@ export default function AddProductScreen() {
         unit:     p.unit,
         category: p.category,
       });
-      if (p.images && p.images.length > 0) setImageUri(p.images[0]);
+      if (p.images && p.images.length > 0) setSelectedImages(p.images);
     }).catch(() => {
       Alert.alert('Error', 'Could not load product details.');
     }).finally(() => setPrefilling(false));
   }, [productId]);
 
-  const pickImage = async () => {
-    setIsPickingImage(true);
-    try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        allowsEditing: false,
-        quality: 0.8,
-      });
-
-      if (!result.canceled) {
-        setImageUri(result.assets[0].uri);
+  // Recover pending image picker result if Android killed the activity while gallery was open
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    (async () => {
+      try {
+        const pending = await ImagePicker.getPendingResultAsync() as any;
+        if (pending && !pending.errorCode && !pending.canceled && pending.assets?.length) {
+          const newUris = (pending.assets as { uri: string }[]).map(a => a.uri);
+          setSelectedImages(prev => [...prev, ...newUris].slice(0, MAX_IMAGES));
+        }
+      } catch {
+        // No pending result — that's fine
       }
-    } finally {
-      setIsPickingImage(false);
+    })();
+  }, []);
+
+  const pickImage = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert(
+        'Permission Required',
+        'Please allow access to your photo library in Settings to upload crop photos.',
+      );
+      return;
     }
+
+    const remaining = MAX_IMAGES - selectedImages.length;
+    if (remaining <= 0) return;
+
+    setIsPickingImage(true);
+    InteractionManager.runAfterInteractions(async () => {
+      try {
+        const result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ['images'],
+          allowsEditing: false,
+          allowsMultipleSelection: true,
+          selectionLimit: remaining,
+          quality: 0.7,
+        });
+
+        if (!result.canceled && result.assets?.length) {
+          const newUris = result.assets.map(a => a.uri);
+          setSelectedImages(prev => [...prev, ...newUris].slice(0, MAX_IMAGES));
+        }
+      } catch (e) {
+        Alert.alert('Error', 'Could not open photo library. Please try again.');
+      } finally {
+        setIsPickingImage(false);
+      }
+    });
+  };
+
+  const removeImage = (index: number) => {
+    setSelectedImages(prev => prev.filter((_, i) => i !== index));
   };
 
   const onSubmit = async (data: ProductForm) => {
-    if (!imageUri) {
-      Alert.alert('Photo Required', 'Please upload a photo of your crop before listing.');
+    if (selectedImages.length === 0) {
+      Alert.alert('Photo Required', 'Please upload at least one photo of your crop before listing.');
       return;
     }
 
     setIsSimulatingAI(true);
 
     try {
-      // 1. Prepare base64 image data
-      let base64Data: string | undefined;
-      let mimeType: string = 'image/jpeg';
+      // Encode any local URIs to base64 data URIs; pass through data:/http: as-is
+      const finalImages: string[] = [];
 
-      if (!isEditing && imageUri) {
-        if (Platform.OS === 'web') {
-          // On web, imageUri is a blob URL — fetch it to get the actual binary + real MIME type
-          const response = await fetch(imageUri);
-          const blob = await response.blob();
-          // Use the actual blob MIME type (not guessed from filename)
-          mimeType = blob.type || 'image/jpeg';
-          base64Data = await new Promise<string>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onloadend = () => {
-              const result = reader.result as string;
-              // result is: "data:image/jpeg;base64,/9j/..."
-              // Strip the prefix to get raw base64
-              resolve(result.split(',')[1]);
-            };
-            reader.onerror = reject;
-            reader.readAsDataURL(blob);
-          });
+      for (const uri of selectedImages) {
+        if (uri.startsWith('data:') || uri.startsWith('http:') || uri.startsWith('https:')) {
+          finalImages.push(uri);
         } else {
-          // Native: read file as base64 directly
-          const filename = imageUri.split('/').pop() ?? 'crop.jpg';
-          mimeType = filename.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
-          const FileSystem = require('expo-file-system/legacy');
-          base64Data = await FileSystem.readAsStringAsync(imageUri, { encoding: 'base64' });
+          // Local file:// or blob: — encode to base64 data URI
+          let b64: string;
+          let mime = 'image/jpeg';
+
+          if (Platform.OS === 'web') {
+            const response = await fetch(uri);
+            const blob = await response.blob();
+            mime = blob.type || 'image/jpeg';
+            b64 = await new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
+              reader.onerror = reject;
+              reader.readAsDataURL(blob);
+            });
+          } else {
+            const filename = uri.split('/').pop() ?? 'crop.jpg';
+            mime = filename.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
+            const FileSystem = require('expo-file-system/legacy');
+            b64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
+          }
+
+          finalImages.push(`data:${mime};base64,${b64}`);
         }
       }
 
-      // 2. Prepare payload
       const payload: any = {
         title: data.name,
         description: `Fresh ${data.category} listed by farmer.`,
@@ -171,34 +213,44 @@ export default function AddProductScreen() {
       };
 
       if (isEditing && productId) {
-        await productService.update(productId, payload);
+        // Send full updated images array — update endpoint does findByIdAndUpdate(req.body)
+        await productService.update(productId, { ...payload, images: finalImages });
         setSubmissionStatus({
           type: 'success',
           title: 'Listing Updated! ✅',
-          message: 'Your product listing has been updated successfully.'
+          message: 'Your product listing has been updated successfully.',
         });
       } else {
-        if (base64Data) {
-          payload.imageData = base64Data;
-          payload.mimeType = mimeType;
+        // Extract imageDatas + mimeTypes from the data URIs for AI grading
+        const imageDatas: string[] = [];
+        const mimeTypes: string[] = [];
+        for (const uri of finalImages) {
+          if (uri.startsWith('data:')) {
+            const commaIdx = uri.indexOf(',');
+            const mime = uri.substring(5, uri.indexOf(';'));
+            imageDatas.push(uri.substring(commaIdx + 1));
+            mimeTypes.push(mime);
+          }
+        }
+
+        if (imageDatas.length > 0) {
+          payload.imageDatas = imageDatas;
+          payload.mimeTypes = mimeTypes;
         }
 
         const createdProduct = await productService.create(payload);
-        
         setSubmissionStatus({
           type: createdProduct.status === 'pending_ai' ? 'pending' : 'success',
           title: createdProduct.status === 'pending_ai' ? 'AI Analyzing Listing ⏳' : 'Listing Submitted! ✅',
-          message: createdProduct.status === 'pending_ai' ? 'Your product is currently being reviewed by our AI. Please wait...' : 'Your product has been listed successfully.',
+          message: createdProduct.status === 'pending_ai'
+            ? 'Your product is currently being reviewed by our AI. Please wait...'
+            : 'Your product has been listed successfully.',
           productId: createdProduct._id,
         });
       }
     } catch (e: any) {
       const msg = e?.response?.data?.message ?? e?.message ?? 'Failed to list product. Please try again.';
-      setSubmissionStatus({
-        type: 'error',
-        title: 'Error',
-        message: msg
-      });
+      setSubmissionStatus({ type: 'error', title: 'Error', message: msg });
     } finally {
       setIsSimulatingAI(false);
     }
@@ -217,14 +269,22 @@ export default function AddProductScreen() {
     const isSuccess = submissionStatus.type === 'success';
     const isError = submissionStatus.type === 'error';
     const isPending = submissionStatus.type === 'pending';
-    
+
     return (
       <View style={[styles.container, { justifyContent: 'center', alignItems: 'center', padding: 24, backgroundColor: '#fff' }]}>
-        <View style={{ width: 80, height: 80, borderRadius: 40, backgroundColor: isSuccess ? '#DCFCE7' : isError ? '#FEE2E2' : '#EFF6FF', alignItems: 'center', justifyContent: 'center', marginBottom: 24 }}>
+        <View style={{
+          width: 80, height: 80, borderRadius: 40,
+          backgroundColor: isSuccess ? '#DCFCE7' : isError ? '#FEE2E2' : '#EFF6FF',
+          alignItems: 'center', justifyContent: 'center', marginBottom: 24,
+        }}>
           {isPending ? (
             <ActivityIndicator size="large" color="#3B82F6" />
           ) : (
-            <Feather name={isSuccess ? "check" : "x"} size={40} color={isSuccess ? "#16A34A" : isError ? "#DC2626" : "#3B82F6"} />
+            <Feather
+              name={isSuccess ? 'check' : 'x'}
+              size={40}
+              color={isSuccess ? '#16A34A' : isError ? '#DC2626' : '#3B82F6'}
+            />
           )}
         </View>
         <Text style={{ fontSize: 24, fontWeight: '900', color: Colors.textPrimary, marginBottom: 12, textAlign: 'center' }}>
@@ -234,15 +294,9 @@ export default function AddProductScreen() {
           {submissionStatus.message}
         </Text>
         {!isPending && (
-          <TouchableOpacity 
+          <TouchableOpacity
             style={[styles.submitBtn, { width: '100%', backgroundColor: isSuccess ? Colors.agri.sabz : '#1E293B' }]}
-            onPress={() => {
-              if (isSuccess) {
-                router.back();
-              } else {
-                setSubmissionStatus(null);
-              }
-            }}
+            onPress={() => { if (isSuccess) router.replace('/(farmer)/products'); else setSubmissionStatus(null); }}
           >
             <Text style={styles.submitBtnText}>{isSuccess ? 'Go to My Products' : 'Try Again'}</Text>
           </TouchableOpacity>
@@ -254,70 +308,83 @@ export default function AddProductScreen() {
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.container}>
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-        <TouchableOpacity 
-          style={styles.backBtn}
-          onPress={() => router.back()}
-        >
+        <TouchableOpacity style={styles.backBtn} onPress={() => router.replace('/(farmer)/products')}>
           <Feather name="arrow-left" size={22} color={Colors.textPrimary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{isEditing ? 'Edit Listing' : 'Add New Listing'}</Text>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        
-        {/* IMAGE UPLOAD UI */}
+
+        {/* IMAGE UPLOAD */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>Crop Photography</Text>
           <Text style={styles.sectionDesc}>High quality photos get 3x more buyer interest.</Text>
-          
-          <TouchableOpacity
-            onPress={pickImage}
-            activeOpacity={0.8}
-            disabled={isPickingImage || isSimulatingAI}
-            style={[styles.imagePlate, imageUri ? styles.imagePlateActive : null, (isPickingImage || isSimulatingAI) ? styles.imagePlateDisabled : null]}
+
+          {/* Thumbnail strip */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.thumbStripContent}
+            style={styles.thumbStrip}
           >
-            {isPickingImage ? (
-              <View style={styles.uploadPlaceholder}>
-                <ActivityIndicator size="large" color={Colors.agri.sabz} />
-                <Text style={[styles.uploadTitle, { marginTop: 12 }]}>Opening Gallery...</Text>
+            {selectedImages.map((uri, index) => (
+              <View key={`img-${index}`} style={styles.thumbWrapper}>
+                <Image source={{ uri }} style={styles.thumb} resizeMode="cover" />
+                {index === 0 && (
+                  <View style={styles.primaryBadge}>
+                    <Text style={styles.primaryBadgeText}>Main</Text>
+                  </View>
+                )}
+                <TouchableOpacity
+                  style={styles.removeBtn}
+                  onPress={() => removeImage(index)}
+                  disabled={isSimulatingAI}
+                  hitSlop={{ top: 6, right: 6, bottom: 6, left: 6 }}
+                >
+                  <Feather name="x" size={10} color="#fff" />
+                </TouchableOpacity>
               </View>
-            ) : imageUri ? (
-              <>
-                 <Image source={{ uri: imageUri }} style={styles.fullImage}  />
-                 <View style={styles.imageOverlay}>
-                    <View style={styles.changeBadge}>
-                       <Feather name="camera" size={14} color={Colors.textPrimary} />
-                       <Text style={styles.changeText}>Update Photo</Text>
-                    </View>
-                 </View>
-              </>
-            ) : (
-              <View style={styles.uploadPlaceholder}>
-                <View style={styles.uploadCircle}>
-                   <Feather name="upload" size={24} color={Colors.agri.sabz} />
-                </View>
-                <Text style={styles.uploadTitle}>Tap to Upload</Text>
-                <Text style={styles.uploadSubtitle}>JPG or PNG (Max 5MB)</Text>
-              </View>
+            ))}
+
+            {selectedImages.length < MAX_IMAGES && (
+              <TouchableOpacity
+                style={[styles.addThumb, (isPickingImage || isSimulatingAI) && { opacity: 0.5 }]}
+                onPress={pickImage}
+                disabled={isPickingImage || isSimulatingAI}
+                activeOpacity={0.7}
+              >
+                {isPickingImage ? (
+                  <ActivityIndicator size="small" color={Colors.agri.sabz} />
+                ) : (
+                  <>
+                    <Feather name="camera" size={22} color={Colors.agri.sabz} />
+                    <Text style={styles.addThumbText}>Add</Text>
+                  </>
+                )}
+              </TouchableOpacity>
             )}
-          </TouchableOpacity>
+          </ScrollView>
+
+          <Text style={styles.imageHint}>
+            {selectedImages.length === 0
+              ? `Tap "Add" to upload crop photos · Max ${MAX_IMAGES} images`
+              : `${selectedImages.length}/${MAX_IMAGES} photos · First image is the main photo`}
+          </Text>
 
           <View style={styles.aiAlert}>
-             <LinearGradient
-               colors={['#F5F3FF', '#EDE9FE']}
-               style={[StyleSheet.absoluteFill, { borderRadius: 16 }]}
-             />
-             <View style={styles.aiIconWrap}>
-                <Feather name="cpu" size={18} color="#7C3AED" />
-             </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.aiTitle}>AI Quality Analysis</Text>
-                <Text style={styles.aiDesc}>Upon upload, our AI will automatically grade your crop as Premium, Standard, or Fair.</Text>
-              </View>
+            <LinearGradient colors={['#F5F3FF', '#EDE9FE']} style={[StyleSheet.absoluteFill, { borderRadius: 16 }]} />
+            <View style={styles.aiIconWrap}>
+              <Feather name="cpu" size={18} color="#7C3AED" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.aiTitle}>AI Quality Analysis</Text>
+              <Text style={styles.aiDesc}>Upon upload, our AI will automatically grade your crop as Premium, Standard, or Fair.</Text>
+            </View>
           </View>
         </View>
 
-        {/* DETAILS */}
+        {/* LISTING DETAILS */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>Listing Details</Text>
 
@@ -325,12 +392,12 @@ export default function AddProductScreen() {
             <Text style={styles.label}>Crop Name</Text>
             <Controller control={control} name="name" render={({ field: { onChange, value } }) => (
               <View style={[styles.inputField, errors.name && styles.inputError]}>
-                <TextInput 
+                <TextInput
                   style={styles.textInput}
-                  placeholder="e.g. Basmati Rice, Desi Wheat" 
+                  placeholder="e.g. Basmati Rice, Desi Wheat"
                   placeholderTextColor="#94A3B8"
-                  onChangeText={onChange} 
-                  value={value} 
+                  onChangeText={onChange}
+                  value={value}
                 />
               </View>
             )} />
@@ -346,7 +413,9 @@ export default function AddProductScreen() {
                   onPress={() => setValue('category', cat)}
                   style={[styles.unitBtn, selectedCategory === cat ? styles.unitBtnActive : null]}
                 >
-                  <Text style={[styles.unitBtnText, selectedCategory === cat ? styles.unitBtnTextActive : null, { textTransform: 'capitalize' }]}>{cat}</Text>
+                  <Text style={[styles.unitBtnText, selectedCategory === cat ? styles.unitBtnTextActive : null, { textTransform: 'capitalize' }]}>
+                    {cat}
+                  </Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -354,51 +423,51 @@ export default function AddProductScreen() {
           </View>
 
           <View style={styles.row}>
-             <View style={{ flex: 1.2, marginRight: 12 }}>
-                <Text style={styles.label}>Unit</Text>
-                <View style={styles.unitGrid}>
-                   {UNITS.map(u => (
-                     <TouchableOpacity 
-                       key={u} 
-                       onPress={() => setValue('unit', u)} 
-                       style={[styles.unitBtn, selectedUnit === u ? styles.unitBtnActive : null]}
-                     >
-                       <Text style={[styles.unitBtnText, selectedUnit === u ? styles.unitBtnTextActive : null]}>{u}</Text>
-                     </TouchableOpacity>
-                   ))}
-                </View>
-             </View>
+            <View style={{ flex: 1.2, marginRight: 12 }}>
+              <Text style={styles.label}>Unit</Text>
+              <View style={styles.unitGrid}>
+                {UNITS.map(u => (
+                  <TouchableOpacity
+                    key={u}
+                    onPress={() => setValue('unit', u)}
+                    style={[styles.unitBtn, selectedUnit === u ? styles.unitBtnActive : null]}
+                  >
+                    <Text style={[styles.unitBtnText, selectedUnit === u ? styles.unitBtnTextActive : null]}>{u}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
 
-             <View style={{ flex: 1 }}>
-               <Text style={styles.label}>Price / {selectedUnit}</Text>
-               <Controller control={control} name="price" render={({ field: { onChange, value } }) => (
-                 <View style={[styles.inputField, errors.price && styles.inputError]}>
-                    <Text style={styles.pricePrefix}>₨</Text>
-                    <TextInput 
-                      style={[styles.textInput, { fontWeight: '900' }]} 
-                      placeholder="0" 
-                      placeholderTextColor="#94A3B8"
-                      keyboardType="numeric" 
-                      onChangeText={onChange} 
-                      value={value} 
-                    />
-                 </View>
-               )} />
-               {errors.price && <Text style={styles.errorText}>{errors.price.message}</Text>}
-             </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.label}>Price / {selectedUnit}</Text>
+              <Controller control={control} name="price" render={({ field: { onChange, value } }) => (
+                <View style={[styles.inputField, errors.price && styles.inputError]}>
+                  <Text style={styles.pricePrefix}>₨</Text>
+                  <TextInput
+                    style={[styles.textInput, { fontWeight: '900' }]}
+                    placeholder="0"
+                    placeholderTextColor="#94A3B8"
+                    keyboardType="numeric"
+                    onChangeText={onChange}
+                    value={value}
+                  />
+                </View>
+              )} />
+              {errors.price && <Text style={styles.errorText}>{errors.price.message}</Text>}
+            </View>
           </View>
 
           <View style={[styles.inputGroup, { marginTop: 12 }]}>
             <Text style={styles.label}>Stock Quantity (in {selectedUnit})</Text>
             <Controller control={control} name="quantity" render={({ field: { onChange, value } }) => (
               <View style={[styles.inputField, errors.quantity && styles.inputError]}>
-                <TextInput 
-                  style={[styles.textInput, { fontWeight: '700' }]} 
-                  placeholder="e.g. 500" 
+                <TextInput
+                  style={[styles.textInput, { fontWeight: '700' }]}
+                  placeholder="e.g. 500"
                   placeholderTextColor="#94A3B8"
                   keyboardType="numeric"
-                  onChangeText={onChange} 
-                  value={value} 
+                  onChangeText={onChange}
+                  value={value}
                 />
               </View>
             )} />
@@ -409,19 +478,17 @@ export default function AddProductScreen() {
         <View style={{ height: 40 }} />
       </ScrollView>
 
-      {/* FINAL ACTION */}
       <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
-         <Button
-            label={isSimulatingAI ? 'Analyzing & Publishing...' : 'Confirm Listing'}
-            onPress={handleSubmit(onSubmit)}
-            loading={isSimulatingAI}
-            disabled={isSimulatingAI || isPickingImage}
-            size="xl"
-            fullWidth
-            rightIcon={!isSimulatingAI && <Feather name="plus-circle" size={20} color="#fff" />}
-            style={{ backgroundColor: Colors.agri.sabz }}
-         />
-
+        <Button
+          label={isSimulatingAI ? 'Analyzing & Publishing...' : 'Confirm Listing'}
+          onPress={handleSubmit(onSubmit)}
+          loading={isSimulatingAI}
+          disabled={isSimulatingAI || isPickingImage}
+          size="xl"
+          fullWidth
+          rightIcon={!isSimulatingAI && <Feather name="plus-circle" size={20} color="#fff" />}
+          style={{ backgroundColor: Colors.agri.sabz }}
+        />
       </View>
     </KeyboardAvoidingView>
   );
@@ -440,37 +507,42 @@ const styles = StyleSheet.create({
   },
   headerTitle: { fontSize: 20, fontWeight: '900', color: Colors.textPrimary },
   scrollContent: { paddingHorizontal: 24, paddingTop: 24, paddingBottom: 120 },
-  
+
   section: { marginBottom: 32 },
   sectionLabel: { fontSize: 18, fontWeight: '900', color: '#1E293B', marginBottom: 4 },
   sectionDesc: { fontSize: 13, color: '#64748B', fontWeight: '500', marginBottom: 20 },
 
-  imagePlate: {
-    height: 220, borderRadius: 24, borderWidth: 2, borderStyle: 'dashed',
-    borderColor: '#E2E8F0', backgroundColor: '#F1F5F9',
-    overflow: 'hidden', justifyContent: 'center', alignItems: 'center',
+  thumbStrip: { marginBottom: 12 },
+  thumbStripContent: { gap: 10, paddingBottom: 4 },
+  thumbWrapper: { position: 'relative' },
+  thumb: {
+    width: 90, height: 90, borderRadius: 14, backgroundColor: '#E2E8F0',
   },
-  imagePlateActive: { borderStyle: 'solid', borderColor: Colors.agri.sabz, backgroundColor: '#fff' },
-  imagePlateDisabled: { opacity: 0.6 },
-  uploadPlaceholder: { alignItems: 'center' },
-  uploadCircle: {
-    width: 56, height: 56, borderRadius: 28, backgroundColor: '#fff',
-    alignItems: 'center', justifyContent: 'center', marginBottom: 12,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05, shadowRadius: 5,
+  primaryBadge: {
+    position: 'absolute', bottom: 5, left: 5,
+    backgroundColor: Colors.agri.sabz, borderRadius: 6,
+    paddingHorizontal: 6, paddingVertical: 2,
   },
-  uploadTitle: { fontSize: 16, fontWeight: '800', color: '#1E293B' },
-  uploadSubtitle: { fontSize: 12, color: '#94A3B8', fontWeight: '500', marginTop: 4 },
-  fullImage: { width: '100%', height: '100%' },
-  imageOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.2)', alignItems: 'center', justifyContent: 'center' },
-  changeBadge: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.9)',
-    paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, gap: 6,
+  primaryBadgeText: { color: '#fff', fontSize: 9, fontWeight: '800' },
+  removeBtn: {
+    position: 'absolute', top: -6, right: -6,
+    width: 22, height: 22, borderRadius: 11,
+    backgroundColor: '#EF4444',
+    alignItems: 'center', justifyContent: 'center',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.25, shadowRadius: 2, elevation: 3,
   },
-  changeText: { fontSize: 12, fontWeight: '800', color: Colors.textPrimary },
+  addThumb: {
+    width: 90, height: 90, borderRadius: 14,
+    borderWidth: 2, borderStyle: 'dashed', borderColor: Colors.agri.sabz,
+    backgroundColor: '#F0FDF4',
+    alignItems: 'center', justifyContent: 'center', gap: 4,
+  },
+  addThumbText: { fontSize: 11, fontWeight: '700', color: Colors.agri.sabz },
+  imageHint: { fontSize: 12, color: '#94A3B8', fontWeight: '500', marginBottom: 16 },
 
   aiAlert: {
-    flexDirection: 'row', padding: 16, borderRadius: 16, marginTop: 16,
+    flexDirection: 'row', padding: 16, borderRadius: 16,
     alignItems: 'center', gap: 12, overflow: 'hidden',
   },
   aiIconWrap: {
@@ -481,7 +553,10 @@ const styles = StyleSheet.create({
   aiDesc: { fontSize: 11, color: '#7C3AED', fontWeight: '500', marginTop: 2, lineHeight: 16 },
 
   inputGroup: { marginBottom: 20 },
-  label: { fontSize: 13, fontWeight: '800', color: Colors.textPrimary, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
+  label: {
+    fontSize: 13, fontWeight: '800', color: Colors.textPrimary,
+    marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5,
+  },
   inputField: {
     flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff',
     borderRadius: 16, height: 56, borderWidth: 1, borderColor: '#E2E8F0',
@@ -491,7 +566,7 @@ const styles = StyleSheet.create({
   textInput: { flex: 1, fontSize: 16, fontWeight: '600', color: Colors.textPrimary },
   pricePrefix: { fontSize: 18, fontWeight: '900', color: Colors.textPrimary, marginRight: 8 },
   errorText: { color: Colors.error, fontSize: 11, marginTop: 4, fontWeight: '600' },
-  
+
   row: { flexDirection: 'row', alignItems: 'flex-start' },
   unitGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   unitBtn: {
@@ -514,4 +589,3 @@ const styles = StyleSheet.create({
   },
   submitBtnText: { color: '#fff', fontSize: 16, fontWeight: '800' },
 });
-
