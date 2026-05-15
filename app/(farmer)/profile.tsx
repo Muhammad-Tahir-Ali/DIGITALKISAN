@@ -1,47 +1,144 @@
-import { View, Text, TouchableOpacity, Alert, Platform, StyleSheet, ScrollView } from 'react-native';
+import React from 'react';
+import {
+  View, Text, TouchableOpacity, Alert,
+  Switch, Platform, StyleSheet, ScrollView,
+} from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useRouter, useFocusEffect } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '@/hooks/useAuth';
 import { Colors } from '@/constants/colors';
-import { useRouter } from 'expo-router';
+
+const KEY_NOTIFS = '@digitalkisan:pref:notifs';
+const KEY_LANG   = '@digitalkisan:lang';
+
+interface SettingsRowProps {
+  icon: string;
+  label: string;
+  value?: string;
+  onPress?: () => void;
+  danger?: boolean;
+  toggle?: boolean;
+  toggleValue?: boolean;
+  onToggleChange?: (v: boolean) => void;
+}
+
+function SettingsRow({
+  icon, label, value, onPress, danger,
+  toggle, toggleValue, onToggleChange,
+}: SettingsRowProps) {
+  return (
+    <TouchableOpacity
+      style={styles.row}
+      onPress={toggle ? undefined : onPress}
+      activeOpacity={toggle ? 1 : 0.7}
+    >
+      <View style={[styles.rowIcon, danger && styles.rowIconDanger]}>
+        <Feather
+          name={icon as any}
+          size={16}
+          color={danger ? Colors.error : Colors.textSecondary}
+        />
+      </View>
+      <Text style={[styles.rowLabel, danger && styles.rowLabelDanger]}>
+        {label}
+      </Text>
+      <View style={styles.rowRight}>
+        {value ? <Text style={styles.rowValue}>{value}</Text> : null}
+        {toggle ? (
+          <Switch
+            value={!!toggleValue}
+            onValueChange={onToggleChange}
+            trackColor={{ false: '#E5E7EB', true: `${Colors.primary}60` }}
+            thumbColor={toggleValue ? Colors.primary : '#9CA3AF'}
+          />
+        ) : (
+          !danger && <Feather name="chevron-right" size={16} color="#CBD5E1" />
+        )}
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+function SectionCard({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <View style={styles.sectionCard}>
+      <Text style={styles.sectionTitle}>{title}</Text>
+      {children}
+    </View>
+  );
+}
 
 export default function FarmerProfile() {
   const { user, logout } = useAuth();
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
+  const [notifs, setNotifs]       = React.useState(true);
+  const [langLabel, setLangLabel] = React.useState('English');
+
+  useFocusEffect(
+    React.useCallback(() => {
+      AsyncStorage.getItem(KEY_NOTIFS).then(v => {
+        if (v !== null) setNotifs(v === 'true');
+      });
+      AsyncStorage.getItem(KEY_LANG).then(code => {
+        setLangLabel(code === 'ur' ? 'اردو' : 'English');
+      });
+    }, [])
+  );
+
+  const toggleNotifs = async (v: boolean) => {
+    setNotifs(v);
+    await AsyncStorage.setItem(KEY_NOTIFS, String(v));
+  };
+
   const handleLogout = async () => {
     const doLogout = async () => {
       await logout();
       router.replace('/');
     };
-
     if (Platform.OS === 'web') {
-      const confirmed = window.confirm('Are you sure you want to sign out?');
-      if (confirmed) doLogout();
+      if (window.confirm('Are you sure you want to sign out?')) doLogout();
       return;
     }
-
     Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Sign Out', style: 'destructive', onPress: doLogout },
     ]);
   };
 
-  const INFO_ROWS = [
-    { icon: '📱', label: 'Phone', value: user?.phone ?? 'Not set' },
-    { icon: '✅', label: 'Verified', value: user?.isVerified ? 'Yes' : 'Pending' },
-    { icon: '🏷️', label: 'Role', value: 'Farmer' },
-  ];
-
   return (
-    <ScrollView style={styles.root} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-      <View style={[styles.heroHeader, { paddingTop: insets.top + 24 }]}>
+    <ScrollView
+      style={styles.root}
+      contentContainerStyle={styles.content}
+      showsVerticalScrollIndicator={false}
+    >
+      {/* ── HEADER ──────────────────────────────────────────── */}
+      <LinearGradient
+        colors={['#064e3b', '#065f46', '#059669']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={[styles.header, { paddingTop: insets.top + 24 }]}
+      >
+        <View style={styles.headerCircle1} pointerEvents="none" />
+        <View style={styles.headerCircle2} pointerEvents="none" />
+
         <View style={styles.avatar}>
           <Text style={styles.avatarEmoji}>👤</Text>
         </View>
         <Text style={styles.name}>{user?.name ?? 'Farmer'}</Text>
         <Text style={styles.email}>{user?.email}</Text>
+
+        {user?.isVerified && (
+          <View style={styles.verifiedBadge}>
+            <Feather name="shield" size={12} color="#fff" />
+            <Text style={styles.verifiedText}>Verified</Text>
+          </View>
+        )}
+
         <TouchableOpacity
           style={styles.editBtn}
           onPress={() => router.push('/(auth)/edit-profile')}
@@ -49,72 +146,165 @@ export default function FarmerProfile() {
           <Feather name="edit-3" size={12} color="#fff" />
           <Text style={styles.editBtnText}>Edit Profile</Text>
         </TouchableOpacity>
-      </View>
+      </LinearGradient>
 
-      <View style={styles.section}>
-        {INFO_ROWS.map(item => (
-          <View key={item.label} style={styles.infoCard}>
-            <Text style={styles.infoIcon}>{item.icon}</Text>
-            <View style={styles.infoBody}>
-              <Text style={styles.infoLabel}>{item.label}</Text>
-              <Text style={styles.infoValue}>{item.value}</Text>
+      {/* ── SECTIONS ─────────────────────────────────────────── */}
+      <View style={styles.sections}>
+
+        {/* Account */}
+        <SectionCard title="Account">
+          <View style={styles.row}>
+            <View style={styles.rowIcon}>
+              <Feather name="phone" size={16} color={Colors.textSecondary} />
+            </View>
+            <Text style={styles.rowLabel}>Phone</Text>
+            <View style={styles.rowRight}>
+              <Text style={styles.rowValue}>{user?.phone ?? 'Not set'}</Text>
             </View>
           </View>
-        ))}
+        </SectionCard>
 
-        <TouchableOpacity onPress={handleLogout} style={styles.logoutCard}>
-          <Text style={styles.logoutIcon}>🚪</Text>
+        {/* Preferences */}
+        <SectionCard title="Preferences">
+          <SettingsRow
+            icon="bell"
+            label="Push Notifications"
+            toggle
+            toggleValue={notifs}
+            onToggleChange={toggleNotifs}
+          />
+          <SettingsRow
+            icon="globe"
+            label="Language"
+            value={langLabel}
+            onPress={() => router.push('/(buyer)/language' as any)}
+          />
+        </SectionCard>
+
+        {/* Support */}
+        <SectionCard title="Support">
+          <SettingsRow
+            icon="help-circle"
+            label="Help & Support"
+            onPress={() => router.push('/(buyer)/help' as any)}
+          />
+          <SettingsRow
+            icon="info"
+            label="About Digital Kisan"
+            onPress={() => router.push('/(buyer)/about' as any)}
+          />
+        </SectionCard>
+
+        {/* Sign Out */}
+        <TouchableOpacity
+          style={styles.logoutCard}
+          onPress={handleLogout}
+          activeOpacity={0.8}
+        >
+          <View style={[styles.rowIcon, styles.rowIconDanger]}>
+            <Feather name="log-out" size={16} color={Colors.error} />
+          </View>
           <Text style={styles.logoutText}>Sign Out</Text>
         </TouchableOpacity>
+
       </View>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: Colors.background },
+  root:    { flex: 1, backgroundColor: Colors.background },
   content: { paddingBottom: 40 },
 
-  heroHeader: {
-    backgroundColor: Colors.primary,
-    paddingBottom: 32,
+  // ── Header ────────────────────────────────────────────────
+  header: {
+    paddingBottom: 36,
     paddingHorizontal: 24,
     alignItems: 'center',
-    borderBottomLeftRadius: 28,
-    borderBottomRightRadius: 28,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  headerCircle1: {
+    position: 'absolute', top: -50, right: -50,
+    width: 200, height: 200, borderRadius: 100,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  headerCircle2: {
+    position: 'absolute', bottom: -30, left: -20,
+    width: 120, height: 120, borderRadius: 60,
+    backgroundColor: 'rgba(255,255,255,0.04)',
   },
   avatar: {
     width: 80, height: 80, borderRadius: 40,
-    backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', marginBottom: 12,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center', justifyContent: 'center',
+    marginBottom: 12,
   },
   avatarEmoji: { fontSize: 36 },
-  name: { fontSize: 20, fontWeight: '900', color: '#fff', marginBottom: 4 },
-  email: { fontSize: 13, color: 'rgba(255,255,255,0.75)', marginBottom: 16 },
+  name:  { fontSize: 20, fontWeight: '900', color: '#fff', marginBottom: 4 },
+  email: { fontSize: 13, color: 'rgba(255,255,255,0.75)', marginBottom: 10 },
+  verifiedBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    paddingHorizontal: 10, paddingVertical: 5,
+    borderRadius: 8, marginBottom: 12,
+  },
+  verifiedText: {
+    color: '#fff', fontSize: 11, fontWeight: '800', textTransform: 'uppercase',
+  },
   editBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    paddingHorizontal: 16, paddingVertical: 8, borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    paddingHorizontal: 16, paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)',
   },
   editBtnText: { color: '#fff', fontSize: 12, fontWeight: '700' },
 
-  section: { paddingHorizontal: 20, paddingTop: 20, gap: 10 },
+  // ── Sections wrapper ──────────────────────────────────────
+  sections: { paddingHorizontal: 20, paddingTop: 20, gap: 12 },
 
-  infoCard: {
-    flexDirection: 'row', alignItems: 'center', gap: 14,
-    backgroundColor: Colors.surface, borderRadius: 18, padding: 16,
+  // ── SectionCard ───────────────────────────────────────────
+  sectionCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: 18,
     borderWidth: 1, borderColor: Colors.cardBorder,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.03, shadowRadius: 4, elevation: 1,
   },
-  infoIcon: { fontSize: 20 },
-  infoBody: { flex: 1 },
-  infoLabel: { fontSize: 11, color: Colors.textSecondary, fontWeight: '600', marginBottom: 2 },
-  infoValue: { fontSize: 14, color: Colors.textPrimary, fontWeight: '700' },
-
-  logoutCard: {
-    flexDirection: 'row', alignItems: 'center', gap: 14,
-    backgroundColor: Colors.errorLight, borderRadius: 18, padding: 16, marginTop: 8,
+  sectionTitle: {
+    fontSize: 11, fontWeight: '800',
+    color: Colors.textSecondary,
+    textTransform: 'uppercase', letterSpacing: 0.5,
+    paddingHorizontal: 16, paddingTop: 14, paddingBottom: 6,
   },
-  logoutIcon: { fontSize: 20 },
+
+  // ── SettingsRow ───────────────────────────────────────────
+  row: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 16, paddingVertical: 14,
+    borderTopWidth: 1, borderTopColor: Colors.cardBorder,
+  },
+  rowIcon: {
+    width: 32, height: 32, borderRadius: 8,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center', justifyContent: 'center',
+    marginRight: 12,
+  },
+  rowIconDanger:  { backgroundColor: Colors.errorLight },
+  rowLabel:       { flex: 1, fontSize: 14, color: Colors.textPrimary, fontWeight: '600' },
+  rowLabelDanger: { color: Colors.error },
+  rowRight:       { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  rowValue:       { fontSize: 13, color: Colors.textSecondary, fontWeight: '500' },
+
+  // ── Sign Out ──────────────────────────────────────────────
+  logoutCard: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: Colors.errorLight,
+    borderRadius: 18, padding: 16,
+    marginTop: 4,
+  },
   logoutText: { fontSize: 15, fontWeight: '700', color: Colors.error },
 });
