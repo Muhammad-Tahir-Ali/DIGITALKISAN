@@ -55,7 +55,7 @@ function SettingsRow({
             thumbColor={toggleValue ? Colors.primary : '#9CA3AF'}
           />
         ) : (
-          !danger && <Feather name="chevron-right" size={16} color="#CBD5E1" />
+          !danger && !!onPress && <Feather name="chevron-right" size={16} color="#CBD5E1" />
         )}
       </View>
     </TouchableOpacity>
@@ -153,15 +153,11 @@ export default function FarmerProfile() {
 
         {/* Account */}
         <SectionCard title="Account">
-          <View style={styles.row}>
-            <View style={styles.rowIcon}>
-              <Feather name="phone" size={16} color={Colors.textSecondary} />
-            </View>
-            <Text style={styles.rowLabel}>Phone</Text>
-            <View style={styles.rowRight}>
-              <Text style={styles.rowValue}>{user?.phone ?? 'Not set'}</Text>
-            </View>
-          </View>
+          <SettingsRow
+            icon="phone"
+            label="Phone"
+            value={user?.phone ?? 'Not set'}
+          />
         </SectionCard>
 
         {/* Preferences */}
