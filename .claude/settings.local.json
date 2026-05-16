@@ -41,7 +41,18 @@
       "mcp__plugin_playwright_playwright__browser_take_screenshot",
       "mcp__plugin_playwright_playwright__browser_click",
       "Bash(git --version)",
-      "Bash(git config *)"
+      "Bash(git config *)",
+      "Skill(superpowers:brainstorming)",
+      "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\Muhammad Tahir\\\\Desktop\\\\DIGITAL KISAN\\\\DigitalKisan\" -Recurse -Directory | Select-Object -First 30 | ForEach-Object { $_.FullName })",
+      "PowerShell(Get-ChildItem *)",
+      "PowerShell($path = \"C:\\\\Users\\\\Muhammad Tahir\\\\Desktop\\\\DIGITAL KISAN\\\\DigitalKisan\"; ls -Recurse $path\\\\components -ErrorAction SilentlyContinue | Where-Object { $_.PSIsContainer -eq $false } | Select-Object FullName)",
+      "PowerShell(Test-Path *)",
+      "PowerShell(netstat *)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('TOKEN:', d.get\\('token','NO TOKEN'\\)\\); print\\('ROLE:', d.get\\('data',{}\\).get\\('user',{}\\).get\\('role','?'\\)\\)\")",
+      "Skill(superpowers:writing-plans)",
+      "Skill(superpowers:subagent-driven-development)",
+      "Skill(superpowers:finishing-a-development-branch)",
+      "Skill(superpowers:systematic-debugging)"
     ]
   }
 }

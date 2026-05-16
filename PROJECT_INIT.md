@@ -1,5 +1,5 @@
 # 🌾 DIGITAL KISAN — PROJECT INIT REFERENCE
-> Last Updated: 2026-05-10 | Read this first before working on ANY feature.
+> Last Updated: 2026-05-16 | Read this first before working on ANY feature.
 
 ---
 
@@ -48,12 +48,14 @@ DIGITAL KISAN/
 │   │   │       ├── [category].tsx   ← Category product list with sort
 │   │   │       └── detail/[id].tsx  ← Product detail + carousel + Add to Cart
 │   │   ├── (farmer)/
-│   │   │   ├── _layout.tsx    ← Stack navigator
-│   │   │   ├── dashboard.tsx  ← Main farmer dashboard (live stats, pending orders)
+│   │   │   ├── _layout.tsx        ← Tab navigator + hidden routes (under-review, notifications)
+│   │   │   ├── dashboard.tsx      ← Live stats, pending orders, bell nav, AI review banner
 │   │   │   ├── profile.tsx
+│   │   │   ├── under-review.tsx   ← ✅ NEW: Animated pending_ai cards + rejected cards (5s poll)
+│   │   │   ├── notifications.tsx  ← ✅ NEW: In-app notification list with mark-as-read
 │   │   │   ├── products/
 │   │   │   │   ├── index.tsx  ← My Products list (filter/sort/delete)
-│   │   │   │   └── add.tsx    ← Add Product with AI image grading + category picker
+│   │   │   │   └── add.tsx    ← ✅ REBUILT: Multi-image upload (up to 5), thumbnail strip
 │   │   │   ├── orders/
 │   │   │   │   ├── index.tsx  ← 3-tab orders list (New/Active/Done) + bid review nav
 │   │   │   │   └── [id].tsx   ← ✅ REBUILT: Full bid selection UI — ranked bids with
@@ -72,13 +74,14 @@ DIGITAL KISAN/
 │   ├── services/              ← All API calls go HERE (no fetch calls in components)
 │   │   ├── api.ts             ← Axios instance with JWT interceptor + refresh logic
 │   │   ├── auth.service.ts
-│   │   ├── product.service.ts
+│   │   ├── product.service.ts ← getMyProducts(), create(imageDatas[]), delete(), etc.
 │   │   ├── order.service.ts
 │   │   ├── user.service.ts
 │   │   ├── ai.service.ts
 │   │   ├── bid.service.ts     ← place(), getForOrder(), accept()
 │   │   ├── review.service.ts
-│   │   └── socket.service.ts  ← ✅ NEW: Socket.io singleton — connect, joinOrder, emitLocation, onDriverLocation
+│   │   ├── notification.service.ts ← getMyNotifications(), markAsRead(id), markAllAsRead()
+│   │   └── socket.service.ts  ← Socket.io singleton — connect, joinOrder, emitLocation, onDriverLocation
 │   ├── store/
 │   │   ├── authStore.ts       ← Zustand store: user, token, role, isAuthenticated
 │   │   └── cartStore.ts       ← Zustand store: items[], totalItems, totalPrice
@@ -236,10 +239,18 @@ DIGITAL KISAN/
 | Method | Route | Auth | Description |
 |---|---|---|---|
 | GET | `/products` | Public | Get all active products (supports filters: `category`, `pricePerUnit[lte]`) |
+| GET | `/products/my-products` | Farmer/Buyer | Get current user's own products (all statuses including `pending_ai`, `rejected`) |
 | GET | `/products/:id` | Public | Get single product |
-| POST | `/products` | Farmer | Create product |
+| POST | `/products` | Farmer | Create product — accepts `{ imageDatas[], mimeTypes[] }` for multi-image; triggers `processProductAI` background job |
 | PATCH | `/products/:id` | Farmer (owner) | Update product |
 | DELETE | `/products/:id` | Farmer (owner) | Soft-delete (sets status=hidden) |
+
+### Notifications
+| Method | Route | Auth | Description |
+|---|---|---|---|
+| GET | `/notifications` | Private | Get current user's notifications |
+| PATCH | `/notifications/:id/read` | Private | Mark single notification as read |
+| PATCH | `/notifications/mark-all-read` | Private | Mark all notifications as read |
 
 ### Orders
 | Method | Route | Auth | Description |
@@ -324,10 +335,14 @@ EXPO_PUBLIC_API_URL=http://localhost:3000/api/v1
 { farmer(ref:User), title, description,
   category: ['vegetables','fruits','grains','dairy','livestock','other'],
   pricePerUnit, unit: ['kg','ton','liter','piece','dozen'],
-  availableQuantity, images:[String],   ← Array of base64 OR URL strings
-  status: ['active','sold_out','hidden'],
+  availableQuantity,
+  images:[String],          ← Array of base64 data URIs OR URL strings (up to 5 images)
+  status: ['active','sold_out','hidden','pending_ai','rejected'],
+  rejectionReason: String,  ← Set when status === 'rejected' (AI explanation)
+  aiGrade: String,          ← 'N/A' | 'C' | 'B' | 'A' (set after AI analysis)
   rating, ratingsQuantity }
 ```
+> ⚠️ Products start as `pending_ai` after creation. AI analysis runs on ALL images in parallel via `Promise.all(classifyCropImage(...))`. If any image returns digit `'0'` (not a crop), the product is rejected. Only after all images pass does status become `active`.
 
 ### Order
 ```js
@@ -405,10 +420,12 @@ Role routing in index.tsx:
 - Product images stored as **Base64 data URIs** in MongoDB (`data:image/jpeg;base64,...`).
 - **Mobile uploads:** Read via `expo-file-system/legacy` as Base64.
 - **Web uploads:** Read via `fetch() + FileReader()` (expo-file-system is unsupported on web).
-- Sent as JSON (`{ imageData, mimeType }`) to bypass Axios dropping auth headers on `multipart/form-data`.
+- Sent as JSON (`{ imageDatas: string[], mimeTypes: string[] }`) for multi-image; single-image `{ imageData, mimeType }` still accepted for backward compatibility.
 - Backend `app.js` express.json limit is increased to `50mb` to handle high-res Base64 payloads.
 - Always use `<Image source={{ uri: img }} style={{ width:'100%', height:'100%' }} resizeMode="cover" />`.
 - Fallback: `'__emoji__'` sentinel string → renders `🌾` emoji placeholder.
+- **Multi-image UI (add.tsx):** Horizontal `ScrollView` thumbnail strip, up to 5 images, per-image red ✕ remove button, green "Main" badge on first image, dashed "Add" tile triggers picker. Uses `allowsMultipleSelection: true` + `selectionLimit: remaining` in ImagePicker. Android recovery uses `getPendingResultAsync() as any`.
+- **Gallery freeze fix:** `InteractionManager.runAfterInteractions()` wraps `launchImageLibraryAsync` to avoid racing with JS bridge during spinner re-render.
 
 ### Google Maps (Logistics)
 - Provider: `PROVIDER_GOOGLE` (requires native build for full Maps SDK — degrades gracefully in Expo Go)
@@ -525,6 +542,9 @@ curl http://localhost:3000/api/v1/health
 | Order Tracking screen | ✅ FIXED | tracking/[id].tsx — real MapView with green/red/blue markers, live chip, OTP modal |
 | Address autocomplete | 🚧 Future | Free text input, no Google Places |
 | Review/Rating UI | 🚧 Future | No buyer review screen exists yet |
+| AI Review Monitoring | ✅ FIXED | Under Review + Notifications screens; dashboard banner + bell nav |
+| Multi-image upload | ✅ FIXED | Up to 5 images, thumbnail strip, AI grades all images in parallel |
+| Dashboard blank on product fetch fail | ✅ FIXED | Pending AI count fetched independently, never blocks main Promise.all |
 | JazzCash/Easypaisa payout | 🚧 Future | Withdrawal integration pending |
 
 ---
@@ -547,11 +567,13 @@ curl http://localhost:3000/api/v1/health
 - 🚧 Rate/Review after delivery (stub)
 
 ### Farmer
-- ✅ Dashboard (live stats, pending orders, quick actions, Switch to Buyer)
+- ✅ Dashboard (live stats, pending orders, quick actions, bell → notifications, AI review banner)
+- ✅ Under Review screen — **NEW**: animated pulsing pending_ai cards, rejected cards with Edit/Delete, 5s auto-poll
+- ✅ Notifications screen — **NEW**: in-app notification list, mark-as-read, mark-all-read, type-colored icons
 - ✅ Order Detail — **REBUILT**: ranked bid cards, provider info, Accept Bid button
 - ✅ Orders List (New/Active/Done tabs, "Review Bids" navigates to detail)
 - ✅ My Products (filter tabs, category chips, edit with ID pre-fill, delete, FAB)
-- ✅ Add/Edit Product (image picker, AI classify timeout resilience, web upload support)
+- ✅ Add/Edit Product — **REBUILT**: multi-image upload (up to 5), thumbnail strip, AI grades all images
 - ✅ Wallet (live balance, escrow breakdown, recent earnings)
 - 🚧 Farmer Profile (stub)
 
@@ -698,6 +720,50 @@ in_transit orders found → requestForegroundPermissionsAsync()
 - ✅ Timestamp present in every payload
 - ✅ Buyer role cannot broadcast location (role guard)
 - ✅ Multiple sequential location updates relayed correctly
+
+---
+
+## 19. LATEST UPDATES (2026-05-16)
+
+### Multi-Image Product Upload
+- `app/(farmer)/products/add.tsx` fully rewritten. State changed from `imageUri: string | null` to `selectedImages: string[]` (max 5).
+- ImagePicker uses `allowsMultipleSelection: true` + `selectionLimit: remaining`. Android recovery via `getPendingResultAsync() as any`.
+- Horizontal `ScrollView` thumbnail strip: 90×90 thumbs, red ✕ remove button per image, green "Main" badge on first, dashed "Add" tile.
+- `onSubmit` encodes all local URIs to Base64; `data:`/`https:` pass-through skipped.
+- Create payload: `{ imageDatas: string[], mimeTypes: string[] }`. Edit payload: `{ images: string[] }`.
+
+### AI Review on All Images
+- `backend/src/controllers/product.controller.js` — `processProductAI` now accepts `imageDatas[]` + `mimeTypes[]`, runs `Promise.all(classifyCropImage(...))` across all images. If any image returns digit `'0'`, the entire product is rejected with a reason. Grade is the minimum across all images.
+- `createProduct` controller accepts both old single-image (`imageData`/`mimeType`) and new array form — backward-compatible.
+- `DigitalKisan/services/product.service.ts` — `CreateProductPayload` extended with `imageDatas?: string[]` and `mimeTypes?: string[]`.
+
+### AI Review Monitoring Feature
+Three new files + dashboard changes — see implementation section:
+
+**`app/(farmer)/under-review.tsx`** (new hidden route):
+- `useFocusEffect` starts `setInterval(5000)` polling `productService.getMyProducts()`, filtering for `pending_ai` and `rejected`.
+- Second `setInterval(1000)` ticks elapsed timer (`getElapsed(createdAt)` shows `Xm Xs` format).
+- Animations: `pulseAnim` (opacity loop, `useNativeDriver: true`) for green glow overlay; `rotateAnim` (360° spin, `useNativeDriver: true`) for gear icon.
+- Rejected cards show rejection reason + "Edit Listing" (→ add.tsx with `productId` param) + "Delete" (Alert confirm → `productService.delete`).
+
+**`app/(farmer)/notifications.tsx`** (new hidden route):
+- `useFocusEffect` fetches and auto-marks-all-read on open.
+- `TYPE_CONFIG` maps `success`/`error`/`info` → colored icon circle.
+- `timeAgo(dateStr)` helper: "just now" / "Xm ago" / "Xh ago" / "Xd ago".
+- Tap a row → `notificationService.markAsRead(id)`. "Mark all read" header button → `markAllAsRead()`.
+
+**`app/(farmer)/dashboard.tsx`** changes:
+- Removed `showNotificationAlerts()` sequential-alert function and its `useEffect`.
+- Bell icon `onPress` → `router.push('/(farmer)/notifications')` (was: alert chain).
+- Added `pendingAiCount` state, fetched independently via `.then().catch()` (never in the main `Promise.all`) to prevent a failure there from blanking the dashboard.
+- "Under AI review" banner card shown between Overview and Quick Actions when `pendingAiCount > 0` → navigates to under-review screen.
+
+**`app/(farmer)/_layout.tsx`** changes:
+- Added two hidden routes: `name="under-review"` and `name="notifications"` with `href: null`.
+
+### Dashboard Isolation Bug Fix
+- Root cause: `productService.getMyProducts()` was added to `Promise.all` alongside stats/orders/notifications. Any failure in products blanked the entire dashboard.
+- Fix: fetch pending AI count independently after `Promise.all` resolves, using `.then(p => setPendingAiCount(...)).catch(() => {})`.
 
 ---
 

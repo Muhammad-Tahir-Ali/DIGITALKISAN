@@ -1,0 +1,57 @@
+<h2>What should the profile header show?</h2>
+<p class="subtitle">The top section of the farmer profile screen</p>
+
+<div class="cards">
+  <div class="card" data-choice="minimal" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#f0fdf4; padding: 16px;">
+      <div style="background: #15803D; border-radius: 16px; padding: 20px; text-align: center; font-family: sans-serif;">
+        <div style="width:56px;height:56px;border-radius:28px;background:rgba(255,255,255,0.2);margin:0 auto 10px;display:flex;align-items:center;justify-content:center;font-size:24px;">👤</div>
+        <div style="color:#fff;font-size:16px;font-weight:800;">Muhammad Ali</div>
+        <div style="color:rgba(255,255,255,0.7);font-size:11px;margin-top:2px;">farmer@example.com</div>
+        <div style="margin-top:10px;display:inline-flex;align-items:center;gap:4px;background:rgba(255,255,255,0.2);padding:4px 10px;border-radius:999px;">
+          <span style="color:#fff;font-size:11px;">✅ Verified</span>
+        </div>
+        <div style="margin-top:10px;">
+          <span style="background:rgba(255,255,255,0.15);color:#fff;font-size:11px;padding:6px 14px;border-radius:999px;border:1px solid rgba(255,255,255,0.3);">✏️ Edit Profile</span>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A — Minimal</h3>
+      <p>Avatar · name · email · verification badge · edit button. Clean, focused on identity only.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="with-stats" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#f0fdf4; padding: 16px;">
+      <div style="background: #15803D; border-radius: 16px; padding: 20px; text-align: center; font-family: sans-serif;">
+        <div style="width:56px;height:56px;border-radius:28px;background:rgba(255,255,255,0.2);margin:0 auto 10px;display:flex;align-items:center;justify-content:center;font-size:24px;">👤</div>
+        <div style="color:#fff;font-size:16px;font-weight:800;">Muhammad Ali</div>
+        <div style="color:rgba(255,255,255,0.7);font-size:11px;margin-top:2px;">farmer@example.com</div>
+        <div style="margin-top:10px;display:inline-flex;align-items:center;gap:4px;background:rgba(255,255,255,0.2);padding:4px 10px;border-radius:999px;">
+          <span style="color:#fff;font-size:11px;">✅ Verified</span>
+        </div>
+        <div style="margin-top:12px;display:flex;justify-content:space-around;background:rgba(255,255,255,0.12);border-radius:12px;padding:10px 8px;">
+          <div style="text-align:center;">
+            <div style="color:#fff;font-size:15px;font-weight:900;">4.8★</div>
+            <div style="color:rgba(255,255,255,0.65);font-size:9px;">Rating</div>
+          </div>
+          <div style="width:1px;background:rgba(255,255,255,0.2);"></div>
+          <div style="text-align:center;">
+            <div style="color:#fff;font-size:15px;font-weight:900;">23</div>
+            <div style="color:rgba(255,255,255,0.65);font-size:9px;">Products</div>
+          </div>
+          <div style="width:1px;background:rgba(255,255,255,0.2);"></div>
+          <div style="text-align:center;">
+            <div style="color:#fff;font-size:15px;font-weight:900;">47</div>
+            <div style="color:rgba(255,255,255,0.65);font-size:9px;">Orders</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B — With Stats Strip</h3>
+      <p>Same identity header + a 3-col stats row (rating · products · completed orders) inside the green hero.</p>
+    </div>
+  </div>
+</div>
