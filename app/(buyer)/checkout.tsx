@@ -8,6 +8,7 @@ import { Button } from '@/components/ui';
 import { EscrowBadge } from '@/components/checkout/EscrowBadge';
 import { useCartStore } from '@/store/cartStore';
 import { LinearGradient } from 'expo-linear-gradient';
+import { GooglePlacesAutocomplete } from 'react-native-google-places-autocomplete';
 import orderService from '@/services/order.service';
 import userService from '@/services/user.service';
 
@@ -154,24 +155,76 @@ export default function CheckoutScreen() {
         <StepIndicator num={3} label="Confirm" isActive={step === 3} isDone={false} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="always">
         
         {/* ── STEP 1: DELIVERY ── */}
         {step === 1 && (
           <View>
             <Text style={styles.stepTitle}>Delivery Address</Text>
 
-            <View style={[styles.addressInputWrap, addressError ? { borderColor: '#EF4444' } : undefined]}>
-              <Feather name="map-pin" size={20} color={addressError ? '#EF4444' : Colors.agri.sabz} style={{ marginRight: 12 }} />
-              <TextInput
-                style={styles.addressInput}
-                placeholder="Enter full delivery address..."
-                placeholderTextColor="#94A3B8"
-                value={deliveryAddress}
-                onChangeText={(t) => { setDeliveryAddress(t); if (t.trim()) setAddressError(null); }}
-                multiline
-                numberOfLines={3}
-                textAlignVertical="top"
+            <View style={[styles.addressInputWrap, addressError ? { borderColor: '#EF4444' } : undefined, { padding: 0, borderBottomWidth: 0, minHeight: 56, zIndex: 100 }]}>
+              <GooglePlacesAutocomplete
+                placeholder="Search for your delivery address..."
+                onPress={(data, details = null) => {
+                  setDeliveryAddress(data.description);
+                  setAddressError(null);
+                }}
+                query={{
+                  key: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY,
+                  language: 'en',
+                  components: 'country:pk',
+                }}
+                styles={{
+                  container: { flex: 1 },
+                  textInputContainer: {
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    backgroundColor: '#fff',
+                    paddingHorizontal: 16,
+                    height: 56,
+                    borderRadius: 20,
+                  },
+                  textInput: {
+                    flex: 1,
+                    fontSize: 14,
+                    fontWeight: '600',
+                    color: '#1E293B',
+                    height: 56,
+                    padding: 0,
+                    margin: 0,
+                    backgroundColor: 'transparent',
+                  },
+                  listView: {
+                    backgroundColor: '#fff',
+                    borderTopWidth: 1,
+                    borderColor: '#F1F5F9',
+                    borderBottomLeftRadius: 20,
+                    borderBottomRightRadius: 20,
+                  },
+                  row: {
+                    padding: 16,
+                    height: 56,
+                    flexDirection: 'row',
+                  },
+                  description: {
+                    color: '#1E293B',
+                    fontSize: 13,
+                    fontWeight: '500',
+                  }
+                }}
+                renderLeftButton={() => (
+                  <Feather name="map-pin" size={20} color={addressError ? '#EF4444' : Colors.agri.sabz} style={{ marginRight: 12 }} />
+                )}
+                textInputProps={{
+                  placeholderTextColor: '#94A3B8',
+                  value: deliveryAddress,
+                  onChangeText: (text) => {
+                    setDeliveryAddress(text);
+                    if (text.trim()) setAddressError(null);
+                  }
+                }}
+                fetchDetails={false}
+                enablePoweredByContainer={false}
               />
             </View>
             {addressError ? (

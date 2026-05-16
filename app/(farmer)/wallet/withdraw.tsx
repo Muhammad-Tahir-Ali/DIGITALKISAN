@@ -80,7 +80,7 @@ export default function FarmerWithdrawalScreen() {
       Alert.alert(
         'Request Submitted',
         'Your withdrawal request has been submitted. Funds will be processed within 24–48 hours.',
-        [{ text: 'OK', onPress: () => router.back() }]
+        [{ text: 'OK', onPress: () => router.replace('/(farmer)/wallet') }]
       );
     } catch (error: any) {
       Alert.alert('Error', error?.response?.data?.message ?? 'Failed to submit withdrawal request.');
@@ -94,7 +94,7 @@ export default function FarmerWithdrawalScreen() {
   return (
     <View style={styles.container}>
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity onPress={() => router.replace('/(farmer)/wallet')} style={styles.backBtn}>
           <Feather name="arrow-left" size={20} color={Colors.textPrimary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Withdraw Earnings</Text>

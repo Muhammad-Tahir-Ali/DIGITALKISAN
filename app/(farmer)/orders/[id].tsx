@@ -182,7 +182,7 @@ export default function FarmerOrderDetail() {
     <View style={{ flex: 1, backgroundColor: '#F8FAFB' }}>
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity onPress={() => router.replace('/(farmer)/orders')} style={styles.backBtn}>
           <Feather name="arrow-left" size={20} color="#111827" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Order Detail</Text>

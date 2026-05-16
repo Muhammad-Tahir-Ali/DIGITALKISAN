@@ -27,7 +27,7 @@ export default {
         foregroundImage: "./assets/adaptive-icon.png",
         backgroundColor: "#2E7D32"
       },
-      edgeToEdgeEnabled: true,
+      edgeToEdgeEnabled: false,
       predictiveBackGestureEnabled: false,
       package: "com.digitalkisan.app",
       config: {

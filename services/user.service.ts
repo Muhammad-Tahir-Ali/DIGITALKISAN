@@ -29,6 +29,7 @@ export interface WalletData {
 export interface WalletTransaction {
   _id: string;
   amount: number;
+  direction: 'credit' | 'debit';
   type: 'deposit' | 'withdrawal' | 'order_payment' | 'order_refund' | 'payout' | 'escrow_lock' | 'escrow_release';
   status: 'pending' | 'completed' | 'failed' | 'cancelled';
   description: string;
@@ -51,9 +52,14 @@ const userService = {
   getTopFarmers: async (): Promise<Farmer[]> => {
     const { data } = await api.get('/users/top-farmers');
     return data.data.farmers;
-    },
+  },
 
-    getDashboardStats: async (): Promise<DashboardStats> => {
+  getUserProfile: async (id: string): Promise<Farmer> => {
+    const { data } = await api.get(`/users/${id}`);
+    return data.data.user;
+  },
+
+  getDashboardStats: async (): Promise<DashboardStats> => {
         const { data } = await api.get('/users/stats');
         return data.data;
     },

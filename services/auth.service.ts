@@ -78,7 +78,7 @@ const authService = {
    * Create a new account
    * This now returns a pending status, not the auth token
    */
-  register: async (payload: RegisterPayload): Promise<{ status: string; message: string; data: { email: string } }> => {
+  register: async (payload: RegisterPayload): Promise<{ status: string; message: string; data: { email: string; devCode?: string } }> => {
     const { data } = await api.post('/auth/register', payload);
     return data;
   },
@@ -96,7 +96,7 @@ const authService = {
    * Always resolves successfully — backend deliberately doesn't reveal whether
    * the email exists (to prevent enumeration).
    */
-  forgotPassword: async (email: string): Promise<{ message: string }> => {
+  forgotPassword: async (email: string): Promise<{ message: string; devCode?: string }> => {
     const { data } = await api.post('/auth/forgot-password', { email });
     return data;
   },

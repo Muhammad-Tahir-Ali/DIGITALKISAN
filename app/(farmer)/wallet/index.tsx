@@ -1,22 +1,21 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View, Text, ScrollView, StyleSheet,
   TouchableOpacity, RefreshControl,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '@/constants/colors';
 import { SkeletonLoader } from '@/components/ui';
-import userService, { WalletData } from '@/services/user.service';
-import orderService, { Order } from '@/services/order.service';
+import userService, { WalletData, WalletTransaction } from '@/services/user.service';
 
 export default function FarmerWalletScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [wallet, setWallet] = useState<WalletData | null>(null);
-  const [recentOrders, setRecentOrders] = useState<Order[]>([]);
+  const [recentEarnings, setRecentEarnings] = useState<WalletTransaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -25,12 +24,16 @@ export default function FarmerWalletScreen() {
     if (isRefresh) setRefreshing(true); else setLoading(true);
     setError(null);
     try {
-      const [walletData, orders] = await Promise.all([
+      const [walletData, history] = await Promise.all([
         userService.getWallet(),
-        orderService.getMyOrders(),
+        userService.getWalletHistory(),
       ]);
       setWallet(walletData);
-      setRecentOrders(orders.filter(o => o.status === 'delivered').slice(0, 10));
+      // Only show actual payments received (escrow_release credits to availableBalance)
+      const earnings = history
+        .filter(tx => tx.type === 'escrow_release' && tx.direction === 'credit')
+        .slice(0, 10);
+      setRecentEarnings(earnings);
     } catch (e: any) {
       setError(e?.response?.data?.message ?? 'Failed to load wallet. Pull down to retry.');
     } finally {
@@ -39,7 +42,9 @@ export default function FarmerWalletScreen() {
     }
   }, []);
 
-  useEffect(() => { fetchAll(); }, [fetchAll]);
+  useFocusEffect(
+    useCallback(() => { fetchAll(); }, [fetchAll])
+  );
 
   return (
     <ScrollView
@@ -158,29 +163,31 @@ export default function FarmerWalletScreen() {
             </TouchableOpacity>
           </View>
 
-          {recentOrders.length === 0 ? (
+          {recentEarnings.length === 0 ? (
             <View style={styles.emptyCard}>
               <Text style={{ fontSize: 36, marginBottom: 8 }}>💰</Text>
               <Text style={styles.emptyTitle}>No completed sales yet</Text>
               <Text style={styles.emptyDesc}>Earnings from delivered orders will appear here.</Text>
             </View>
           ) : (
-            recentOrders.map(order => (
-              <View key={order._id} style={styles.txCard}>
+            recentEarnings.map(tx => (
+              <View key={tx._id} style={styles.txCard}>
                 <View style={styles.txLeft}>
                   <View style={styles.txIcon}>
                     <Feather name="check-circle" size={16} color={Colors.success} />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.txTitle} numberOfLines={1}>{order.product?.title ?? 'Order'}</Text>
+                    <Text style={styles.txTitle} numberOfLines={1}>
+                      {tx.description?.replace(/^Payment released for order #?/i, 'Order #') ?? 'Sale Payment'}
+                    </Text>
                     <Text style={styles.txDate}>
-                      {new Date(order.createdAt).toLocaleDateString('en-PK', {
+                      Received · {new Date(tx.createdAt).toLocaleDateString('en-PK', {
                         day: 'numeric', month: 'short', year: 'numeric',
                       })}
                     </Text>
                   </View>
                 </View>
-                <Text style={styles.txAmount}>+₨ {(order.totalPrice * 0.95).toLocaleString()}</Text>
+                <Text style={styles.txAmount}>+₨ {tx.amount.toLocaleString()}</Text>
               </View>
             ))
           )}

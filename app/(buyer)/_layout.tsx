@@ -161,6 +161,8 @@ export default function BuyerLayout() {
       <Tabs.Screen name="help"      options={{ href: null, title: 'Help Center' }} />
       <Tabs.Screen name="about"     options={{ href: null, title: 'About' }} />
       <Tabs.Screen name="orders/rate/[id]" options={{ href: null, title: 'Rate Order' }} />
+      <Tabs.Screen name="wallet/withdraw" options={{ href: null, title: 'Withdraw' }} />
+      <Tabs.Screen name="farmer/[id]" options={{ href: null, title: 'Farmer Profile' }} />
     </Tabs>
   );
 }

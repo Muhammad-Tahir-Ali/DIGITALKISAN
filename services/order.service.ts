@@ -18,6 +18,7 @@ export interface Order {
   product: { _id: string; title: string; pricePerUnit: number };
   logisticsProvider?: { _id: string; name: string; phone: string };
   quantity: number;
+  deliveryFee?: number;
   totalPrice: number;
   shippingAddress: { address: string };
   status: OrderStatus;

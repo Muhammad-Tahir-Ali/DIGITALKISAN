@@ -156,6 +156,15 @@ export default function RegisterScreen() {
         role: role as UserRole,
       });
 
+      if (responseData && responseData.devCode) {
+        const msg = `[DEV MODE] Your verification code is: ${responseData.devCode}`;
+        if (Platform.OS === 'web') {
+          window.alert(msg);
+        } else {
+          Alert.alert('DEV MODE', msg);
+        }
+      }
+
       // Navigate to verify email screen
       router.push({
         pathname: '/(auth)/verify-email',

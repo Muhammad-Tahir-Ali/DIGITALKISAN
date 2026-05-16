@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity,
   StyleSheet, ActivityIndicator,
   RefreshControl, Alert,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '@/constants/colors';
@@ -50,7 +50,9 @@ export default function FarmerOrdersScreen() {
     }
   }, []);
 
-  useEffect(() => { fetchOrders(); }, [fetchOrders]);
+  useFocusEffect(
+    useCallback(() => { fetchOrders(); }, [fetchOrders])
+  );
 
   const tabOrders = (tab: TabKey) =>
     orders.filter(o => TABS.find(t => t.key === tab)!.statuses.includes(o.status));

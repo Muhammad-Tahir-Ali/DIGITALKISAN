@@ -3,7 +3,6 @@ import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
   RefreshControl, ActivityIndicator,
 } from 'react-native';
-import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -28,7 +27,6 @@ function startOfMonth() {
 
 export default function LogisticsEarningsScreen() {
   const insets = useSafeAreaInsets();
-  const router = useRouter();
   const currentUser = useAuthStore((s) => s.user);
 
   const [wallet, setWallet]           = useState<WalletData | null>(null);
@@ -62,14 +60,16 @@ export default function LogisticsEarningsScreen() {
   useFocusEffect(useCallback(() => { fetchAll(); }, [fetchAll]));
 
   // Stats computed from deliveries
-  const monthlyEarnings = deliveries
-    .filter((o) => new Date(o.createdAt) >= startOfMonth())
-    .reduce((sum, o) => sum + o.totalPrice, 0);
+  // Note: order.totalPrice is the agricultural order value, not the delivery fee.
+  // Use wallet.totalEarned (credited by the escrow system) for accurate earnings figures.
+  const monthlyDeliveries = deliveries.filter(
+    (o) => new Date(o.createdAt) >= startOfMonth()
+  ).length;
 
   const totalDeliveries = deliveries.length;
 
-  const avgPerDelivery = totalDeliveries > 0
-    ? Math.round(deliveries.reduce((s, o) => s + o.totalPrice, 0) / totalDeliveries)
+  const avgPerDelivery = totalDeliveries > 0 && wallet?.totalEarned
+    ? Math.round(wallet.totalEarned / totalDeliveries)
     : 0;
 
   if (loading) {
@@ -106,10 +106,10 @@ export default function LogisticsEarningsScreen() {
       <View style={styles.header}>
         <Text style={styles.headerTitle}>My Earnings</Text>
         <TouchableOpacity
-          onPress={() => router.push('/(logistics)/earnings' as any)}
+          onPress={() => fetchAll(true)}
           style={styles.historyBtn}
         >
-          <Feather name="clock" size={16} color={Colors.primary} />
+          <Feather name="refresh-cw" size={16} color={Colors.primary} />
         </TouchableOpacity>
       </View>
 
@@ -155,7 +155,7 @@ export default function LogisticsEarningsScreen() {
             <View style={[styles.statIcon, { backgroundColor: '#EFF6FF' }]}>
               <Feather name="calendar" size={18} color="#2563EB" />
             </View>
-            <Text style={styles.statVal}>₨ {monthlyEarnings.toLocaleString()}</Text>
+            <Text style={styles.statVal}>{monthlyDeliveries}</Text>
             <Text style={styles.statLabel}>This Month</Text>
           </View>
           <View style={styles.statCard}>
@@ -215,7 +215,8 @@ export default function LogisticsEarningsScreen() {
                   </View>
                 </View>
                 <View style={styles.deliveryRight}>
-                  <Text style={styles.deliveryAmount}>₨ {order.totalPrice.toLocaleString()}</Text>
+                  <Text style={styles.deliveryAmount}>₨ {(order.deliveryFee ?? 200).toLocaleString()}</Text>
+                  <Text style={styles.orderValueLabel}>Delivery Fee</Text>
                   <View style={styles.deliveredBadge}>
                     <Text style={styles.deliveredText}>Delivered</Text>
                   </View>
@@ -316,6 +317,7 @@ const styles = StyleSheet.create({
   deliveryDate: { fontSize: 11, color: '#94A3B8', fontWeight: '500' },
   deliveryRight: { alignItems: 'flex-end', gap: 4, flexShrink: 0 },
   deliveryAmount: { fontSize: 14, fontWeight: '900', color: '#1E40AF' },
+  orderValueLabel: { fontSize: 9, color: '#94A3B8', fontWeight: '600', textAlign: 'right' },
   deliveredBadge: {
     backgroundColor: '#ECFDF5', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8,
   },

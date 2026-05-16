@@ -107,7 +107,6 @@ export default function ActiveDeliveries() {
     if (inTransitOrders.length === 0) {
       locationWatcher.current?.remove();
       locationWatcher.current = null;
-      socketService.disconnect();
       return;
     }
 
@@ -134,7 +133,7 @@ export default function ActiveDeliveries() {
       active = false;
       locationWatcher.current?.remove();
       locationWatcher.current = null;
-      socketService.disconnect();
+      // Do NOT disconnect the socket — other screens (map, buyer tracking) share the connection.
     };
   }, [orders]);
 

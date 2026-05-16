@@ -152,16 +152,21 @@ export default function ProductDetailScreen() {
     );
   }
 
-  const productImages: string[] = product.images && product.images.length > 0 
-    ? product.images 
+  const productImages: string[] = product.images && product.images.length > 0
+    ? product.images
     : ['__emoji__'];
-    
+
   const totalPrice = product.pricePerUnit * qty;
-  const emoji = '🌾'; // Fallback
+  const emoji = '🌾';
   const farmerRating = product.farmer?.rating || 5.0;
   const farmerCity = product.farmer?.location?.address || 'Pakistan';
-  const aiScore = 95; 
-  const quality = 'Grade A' as any;
+
+  // Use real AI grade from DB; only show panel when grade is Grade A/B/C
+  const GRADE_SCORE: Record<string, number> = { 'Grade A': 95, 'Grade B': 72, 'Grade C': 50 };
+  const quality = (product.aiGrade && product.aiGrade !== 'N/A')
+    ? product.aiGrade as 'Grade A' | 'Grade B' | 'Grade C'
+    : null;
+  const aiScore = quality ? GRADE_SCORE[quality] ?? 75 : 75;
 
   return (
     <View style={styles.root}>
@@ -250,7 +255,9 @@ export default function ProductDetailScreen() {
 
           {/* AI Badge + stock */}
           <View style={styles.rowBetween}>
-            <AiBadge grade={quality} score={aiScore} />
+            {quality
+              ? <AiBadge grade={quality} score={aiScore} />
+              : <View />}
             <View style={styles.stockPill}>
               <Feather name="package" size={11} color={Colors.success} />
               <Text style={styles.stockText}>In Stock · {product.availableQuantity} {product.unit}</Text>
@@ -284,11 +291,7 @@ export default function ProductDetailScreen() {
             </View>
             <TouchableOpacity 
               style={styles.viewProfileBtn}
-              onPress={() => Alert.alert(
-                product.farmer?.name || 'Farmer',
-                `📍 ${farmerCity}\n⭐ ${farmerRating.toFixed(1)} rating`,
-                [{ text: 'Close' }]
-              )}
+              onPress={() => router.push(`/(buyer)/farmer/${product.farmer?._id}` as any)}
             >
               <Text style={styles.viewProfileText}>Profile</Text>
               <Feather name="chevron-right" size={14} color={Colors.primary} />
@@ -300,24 +303,49 @@ export default function ProductDetailScreen() {
             <View style={styles.aiPanelHeader}>
               <Feather name="cpu" size={16} color="#9333EA" />
               <Text style={styles.aiPanelTitle}>AI Quality Analysis</Text>
-            </View>
-            <View style={styles.aiMetrics}>
-              {[
-                { label: 'Size Uniformity',  val: aiScore - 2 },
-                { label: 'Freshness',        val: aiScore     },
-                { label: 'Blemish-Free',     val: aiScore + 1 },
-              ].map((m) => (
-                <View key={m.label} style={styles.aiMetric}>
-                  <View style={styles.aiMetricRow}>
-                    <Text style={styles.aiMetricLabel}>{m.label}</Text>
-                    <Text style={styles.aiMetricVal}>{Math.min(m.val, 99)}%</Text>
-                  </View>
-                  <View style={styles.aiBar}>
-                    <View style={[styles.aiBarFill, { width: `${Math.min(m.val, 99)}%` }]} />
-                  </View>
+              {!quality && (
+                <View style={styles.aiPendingBadge}>
+                  <ActivityIndicator size="small" color="#9333EA" style={{ transform: [{ scale: 0.7 }] }} />
+                  <Text style={styles.aiPendingText}>Pending</Text>
                 </View>
-              ))}
+              )}
             </View>
+            {quality ? (
+              <View style={styles.aiMetrics}>
+                {[
+                  { label: 'Size Uniformity', val: aiScore - 2 },
+                  { label: 'Freshness',        val: aiScore     },
+                  { label: 'Blemish-Free',     val: aiScore + 1 },
+                ].map((m) => (
+                  <View key={m.label} style={styles.aiMetric}>
+                    <View style={styles.aiMetricRow}>
+                      <Text style={styles.aiMetricLabel}>{m.label}</Text>
+                      <Text style={styles.aiMetricVal}>{Math.min(m.val, 99)}%</Text>
+                    </View>
+                    <View style={styles.aiBar}>
+                      <View style={[styles.aiBarFill, { width: `${Math.min(m.val, 99)}%` }]} />
+                    </View>
+                  </View>
+                ))}
+              </View>
+            ) : (
+              <View style={styles.aiMetrics}>
+                {['Size Uniformity', 'Freshness', 'Blemish-Free'].map((label) => (
+                  <View key={label} style={styles.aiMetric}>
+                    <View style={styles.aiMetricRow}>
+                      <Text style={styles.aiMetricLabel}>{label}</Text>
+                      <Text style={[styles.aiMetricVal, { color: '#C4B5FD' }]}>—</Text>
+                    </View>
+                    <View style={styles.aiBar}>
+                      <View style={[styles.aiBarFill, { width: '100%', backgroundColor: '#E9D5FF' }]} />
+                    </View>
+                  </View>
+                ))}
+                <Text style={styles.aiPendingNote}>
+                  Our AI is reviewing this listing. Score will appear shortly.
+                </Text>
+              </View>
+            )}
           </View>
 
           {/* ── DESCRIPTION ─────────────────────────────────────────── */}
@@ -471,6 +499,16 @@ const styles = StyleSheet.create({
   aiMetricVal:   { fontSize: 12, color: '#7E22CE', fontWeight: '800' },
   aiBar: { height: 6, backgroundColor: '#E9D5FF', borderRadius: 3 },
   aiBarFill: { height: '100%', backgroundColor: '#9333EA', borderRadius: 3 },
+  aiPendingBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: '#F3E8FF', borderRadius: 20,
+    paddingHorizontal: 8, paddingVertical: 3, marginLeft: 'auto',
+  },
+  aiPendingText: { fontSize: 11, fontWeight: '700', color: '#9333EA' },
+  aiPendingNote: {
+    fontSize: 12, color: '#A78BFA', fontWeight: '500',
+    marginTop: 8, textAlign: 'center', lineHeight: 18,
+  },
 
   // Description
   descSection: { marginBottom: 10 },

@@ -19,6 +19,7 @@ export interface Product {
   images: string[];
   status: 'active' | 'sold_out' | 'hidden' | 'pending_ai' | 'rejected';
   rejectionReason?: string;
+  aiGrade?: 'N/A' | 'Grade C' | 'Grade B' | 'Grade A';
   rating: number;
   ratingsQuantity: number;
   createdAt: string;
@@ -70,7 +71,8 @@ const productService = {
    * Create a new product (Farmer only)
    */
   create: async (payload: CreateProductPayload): Promise<Product> => {
-    const { data } = await api.post('/products', payload);
+    // 90s timeout — base64 image upload can be slow on mobile connections
+    const { data } = await api.post('/products', payload, { timeout: 90000 });
     return data.data.product;
   },
 

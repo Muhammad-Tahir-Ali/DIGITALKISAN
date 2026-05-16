@@ -1,13 +1,13 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity, StyleSheet,
-  RefreshControl, Alert, Image, Platform,
+  RefreshControl, Alert, Platform,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '@/constants/colors';
-import { SkeletonLoader } from '@/components/ui';
+import { SkeletonLoader, LazyImage } from '@/components/ui';
 import productService, { Product } from '@/services/product.service';
 
 const FILTER_TABS = ['All', 'Active', 'Low Stock', 'Out of Stock'];
@@ -38,7 +38,9 @@ export default function MyProductsScreen() {
     }
   }, []);
 
-  useEffect(() => { fetchProducts(); }, [fetchProducts]);
+  useFocusEffect(
+    useCallback(() => { fetchProducts(); }, [fetchProducts])
+  );
 
   const handleDelete = async (id: string) => {
     const doDelete = async () => {
@@ -79,7 +81,7 @@ export default function MyProductsScreen() {
         <View style={styles.cardRow}>
           <View style={[styles.thumb, isHidden && styles.thumbHidden]}>
             {item.images && item.images.length > 0 ? (
-              <Image source={{ uri: item.images[0] }} style={styles.thumbImage} resizeMode="cover" />
+              <LazyImage uri={item.images[0]} style={styles.thumbImage} fallback={<Text style={styles.thumbEmoji}>🌾</Text>} />
             ) : (
               <Text style={styles.thumbEmoji}>🌾</Text>
             )}
@@ -103,6 +105,23 @@ export default function MyProductsScreen() {
               {item.status === 'rejected' && (
                 <View style={styles.badgeRejected}>
                   <Text style={styles.badgeRejectedText}>Rejected ❌</Text>
+                </View>
+              )}
+              {item.status === 'active' && item.aiGrade && item.aiGrade !== 'N/A' && (
+                <View style={[
+                  styles.badgeGrade,
+                  item.aiGrade === 'Grade A' ? styles.badgeGradeA
+                    : item.aiGrade === 'Grade B' ? styles.badgeGradeB
+                    : styles.badgeGradeC,
+                ]}>
+                  <Text style={[
+                    styles.badgeGradeText,
+                    item.aiGrade === 'Grade A' ? styles.badgeGradeTextA
+                      : item.aiGrade === 'Grade B' ? styles.badgeGradeTextB
+                      : styles.badgeGradeTextC,
+                  ]}>
+                    {item.aiGrade === 'Grade A' ? '★ Premium' : item.aiGrade === 'Grade B' ? '★ Standard' : '★ Low'}
+                  </Text>
                 </View>
               )}
             </View>
@@ -294,6 +313,14 @@ const styles = StyleSheet.create({
   badgePendingText: { fontSize: 9, fontWeight: '800', color: '#92400E' },
   badgeRejected: { backgroundColor: '#FEE2E2', paddingHorizontal: 6, paddingVertical: 3, borderRadius: 6 },
   badgeRejectedText: { fontSize: 9, fontWeight: '800', color: '#991B1B' },
+  badgeGrade: { paddingHorizontal: 6, paddingVertical: 3, borderRadius: 6, borderWidth: 1 },
+  badgeGradeA: { backgroundColor: '#F3E8FF', borderColor: '#D8B4FE' },
+  badgeGradeB: { backgroundColor: '#DCFCE7', borderColor: '#86EFAC' },
+  badgeGradeC: { backgroundColor: '#FFF7ED', borderColor: '#FED7AA' },
+  badgeGradeText: { fontSize: 9, fontWeight: '800' },
+  badgeGradeTextA: { color: '#7E22CE' },
+  badgeGradeTextB: { color: '#15803D' },
+  badgeGradeTextC: { color: '#C2410C' },
 
   tagRow: { flexDirection: 'row', gap: 6, marginTop: 8 },
   stockTag: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },

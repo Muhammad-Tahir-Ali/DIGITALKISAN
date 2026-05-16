@@ -34,6 +34,7 @@
     "react-hook-form": "^7.54.2",
     "react-native": "^0.81.5",
     "react-native-css-interop": "^0.2.3",
+    "react-native-google-places-autocomplete": "^2.6.4",
     "react-native-maps": "^1.20.1",
     "react-native-paper": "^5.13.1",
     "react-native-reanimated": "~4.1.1",

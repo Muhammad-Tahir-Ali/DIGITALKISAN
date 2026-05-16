@@ -65,12 +65,11 @@ export default function FarmerDashboard() {
     React.useCallback(() => {
       fetchAll();
 
-      // Poll notifications every 30s to catch async AI / backend updates
+      // Poll dashboard data every 10s to catch async AI / backend updates and new orders
       let errorCount = 0;
       const interval = setInterval(async () => {
         try {
-          const notifs = await notificationService.getMyNotifications();
-          setNotifications(notifs);
+          await fetchAll(false);
           errorCount = 0;
         } catch (e) {
           errorCount++;
@@ -87,8 +86,11 @@ export default function FarmerDashboard() {
 
   const unreadNotifs = notifications.filter(n => !n.isRead);
 
-  // Only show orders that need farmer action (new / unprocessed)
-  const newOrders = orders.filter(o => o.status === 'pending' || o.status === 'paid');
+  // All orders that need farmer attention (excludes delivered and cancelled)
+  const activeOrders = orders.filter(o =>
+    o.status === 'paid' || o.status === 'bidding' ||
+    o.status === 'in_transit' || o.status === 'disputed'
+  );
 
   const handleSwitchToBuyer = () => {
     setRole('buyer');
@@ -228,13 +230,13 @@ export default function FarmerDashboard() {
         </ScrollView>
       </View>
 
-      {/* ── 6. NEW ORDERS ─────────────────────────────────────── */}
+      {/* ── 6. ACTIVE ORDERS ──────────────────────────────────── */}
       <View style={[styles.section, { marginBottom: 40 }]}>
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>New Orders</Text>
-          {newOrders.length > 0 && (
+          <Text style={styles.sectionTitle}>Active Orders</Text>
+          {activeOrders.length > 0 && (
             <View style={styles.badgeCount}>
-              <Text style={styles.badgeText}>{newOrders.length}</Text>
+              <Text style={styles.badgeText}>{activeOrders.length}</Text>
             </View>
           )}
         </View>
@@ -243,48 +245,59 @@ export default function FarmerDashboard() {
           <View style={{ gap: 10, paddingHorizontal: 4 }}>
             <SkeletonLoader.OrderList count={2} />
           </View>
-        ) : newOrders.length > 0 ? (
-          newOrders.map((order) => (
-            <TouchableOpacity
-              key={order._id}
-              style={styles.orderCard}
-              onPress={() => router.push(`/(farmer)/orders/${order._id}` as any)}
-              activeOpacity={0.85}
-            >
-              <View style={styles.orderTop}>
-                <Text style={styles.orderId}>{formatOrderId(order._id)}</Text>
-                <StatusBadge status={order.status} size="sm" />
-              </View>
-              <View style={styles.orderInfo}>
-                <Text style={styles.orderLabel}>
-                  {order.quantity} units · {order.product?.title || 'Unknown Product'}
-                </Text>
-                <Text style={styles.orderTotal}>₨ {order.totalPrice.toLocaleString()}</Text>
-              </View>
-              <View style={styles.orderMeta}>
-                <Feather name="user" size={11} color={Colors.textTertiary} />
-                <Text style={styles.orderMetaText}>{order.buyer?.name ?? 'Buyer'}</Text>
-                <Text style={styles.orderMetaDot}>·</Text>
-                <Feather name="clock" size={11} color={Colors.textTertiary} />
-                <Text style={styles.orderMetaText}>
-                  {new Date(order.createdAt).toLocaleString('en-PK', {
-                    month: 'short', day: 'numeric',
-                    hour: '2-digit', minute: '2-digit',
-                  })}
-                </Text>
-              </View>
-              <View style={styles.orderFooter}>
-                <Text style={styles.viewOrderBtn}>Process Order →</Text>
-              </View>
-            </TouchableOpacity>
-          ))
+        ) : activeOrders.length > 0 ? (
+          activeOrders.map((order) => {
+            const cta =
+              order.status === 'paid'       ? 'Process Order →'   :
+              order.status === 'bidding'    ? 'Find Logistics →'  :
+              order.status === 'in_transit' ? 'Track Delivery →'  :
+              order.status === 'disputed'   ? 'Resolve Dispute →' :
+                                             'View Order →';
+            const ctaColor =
+              order.status === 'disputed' ? Colors.error : Colors.agri.sabz;
+
+            return (
+              <TouchableOpacity
+                key={order._id}
+                style={styles.orderCard}
+                onPress={() => router.push(`/(farmer)/orders/${order._id}` as any)}
+                activeOpacity={0.85}
+              >
+                <View style={styles.orderTop}>
+                  <Text style={styles.orderId}>{formatOrderId(order._id)}</Text>
+                  <StatusBadge status={order.status} size="sm" />
+                </View>
+                <View style={styles.orderInfo}>
+                  <Text style={styles.orderLabel}>
+                    {order.quantity} units · {order.product?.title || 'Unknown Product'}
+                  </Text>
+                  <Text style={styles.orderTotal}>₨ {order.totalPrice.toLocaleString()}</Text>
+                </View>
+                <View style={styles.orderMeta}>
+                  <Feather name="user" size={11} color={Colors.textTertiary} />
+                  <Text style={styles.orderMetaText}>{order.buyer?.name ?? 'Buyer'}</Text>
+                  <Text style={styles.orderMetaDot}>·</Text>
+                  <Feather name="clock" size={11} color={Colors.textTertiary} />
+                  <Text style={styles.orderMetaText}>
+                    {new Date(order.createdAt).toLocaleString('en-PK', {
+                      month: 'short', day: 'numeric',
+                      hour: '2-digit', minute: '2-digit',
+                    })}
+                  </Text>
+                </View>
+                <View style={styles.orderFooter}>
+                  <Text style={[styles.viewOrderBtn, { color: ctaColor }]}>{cta}</Text>
+                </View>
+              </TouchableOpacity>
+            );
+          })
         ) : (
           <View style={styles.emptyCard}>
             <View style={styles.emptyIconWrap}>
               <Feather name="inbox" size={24} color={Colors.textSecondary} />
             </View>
-            <Text style={styles.emptyText}>No new orders</Text>
-            <Text style={styles.emptySubText}>New buyer orders will appear here</Text>
+            <Text style={styles.emptyText}>No active orders</Text>
+            <Text style={styles.emptySubText}>Orders from buyers will appear here</Text>
           </View>
         )}
       </View>

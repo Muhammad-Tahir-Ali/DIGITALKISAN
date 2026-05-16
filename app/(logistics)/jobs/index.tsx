@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View, Text, FlatList, TouchableOpacity,
   StyleSheet, Platform, ActivityIndicator,
@@ -136,8 +137,6 @@ function PlaceBidModal({
 // ─── Job Card ────────────────────────────────────────────────────────────────
 
 function JobCard({ item, onBid }: { item: Order; onBid: (order: Order) => void }) {
-  const distance = '~' + (Math.floor(Math.random() * 40) + 5) + ' km'; // Placeholder until GeoJSON distance added
-
   return (
     <View style={styles.card}>
       <View style={styles.cardHeader}>
@@ -170,10 +169,14 @@ function JobCard({ item, onBid }: { item: Order; onBid: (order: Order) => void }
             {item.shippingAddress?.address ?? 'Address not specified'}
           </Text>
         </View>
-        <View style={styles.deliveryItem}>
-          <Feather name="navigation" size={12} color="#7C3AED" />
-          <Text style={[styles.deliveryText, { color: '#7C3AED' }]}>{distance}</Text>
-        </View>
+        {item.farmer?.name ? (
+          <View style={styles.deliveryItem}>
+            <Feather name="user" size={12} color="#7C3AED" />
+            <Text style={[styles.deliveryText, { color: '#7C3AED' }]} numberOfLines={1}>
+              From: {item.farmer.name}
+            </Text>
+          </View>
+        ) : null}
       </View>
 
       {/* Action */}
@@ -211,7 +214,7 @@ export default function LogisticsJobs() {
     }
   }, []);
 
-  useEffect(() => { fetchJobs(); }, [fetchJobs]);
+  useFocusEffect(useCallback(() => { fetchJobs(); }, [fetchJobs]));
 
   const handleBid = (order: Order) => {
     setSelectedOrder(order);
@@ -238,8 +241,14 @@ export default function LogisticsJobs() {
       <View style={styles.statsRow}>
         {[
           { label: 'Open', value: jobs.length, icon: 'package', color: '#059669', bg: '#D1FAE5' },
-          { label: 'Avg. Pay', value: '₨450', icon: 'trending-up', color: '#7C3AED', bg: '#EDE9FE' },
-          { label: 'My Bids', value: '—', icon: 'send', color: '#2563EB', bg: '#DBEAFE' },
+          {
+            label: 'Avg. Order',
+            value: jobs.length > 0
+              ? `₨${Math.round(jobs.reduce((s, j) => s + (j.totalPrice || 0), 0) / jobs.length).toLocaleString()}`
+              : '—',
+            icon: 'trending-up', color: '#7C3AED', bg: '#EDE9FE',
+          },
+          { label: 'Bid to Win', value: 'Low ✓', icon: 'send', color: '#2563EB', bg: '#DBEAFE' },
         ].map(s => (
           <View key={s.label} style={[styles.statCard, { backgroundColor: s.bg }]}>
             <Feather name={s.icon as any} size={14} color={s.color} />

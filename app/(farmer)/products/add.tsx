@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, ScrollView, Platform,
-  Alert, Image, KeyboardAvoidingView, StyleSheet, ActivityIndicator,
-  InteractionManager,
+  Alert, KeyboardAvoidingView, StyleSheet, ActivityIndicator,
+  InteractionManager, Animated, Image, Dimensions,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useForm, Controller } from 'react-hook-form';
@@ -10,9 +10,10 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Feather } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system/legacy';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '@/constants/colors';
-import { Button } from '@/components/ui';
+import { Button, LazyImage } from '@/components/ui';
 import { LinearGradient } from 'expo-linear-gradient';
 
 import productService from '@/services/product.service';
@@ -21,6 +22,7 @@ const MAX_IMAGES = 5;
 
 const productSchema = z.object({
   name: z.string().min(2, 'Crop name is required'),
+  description: z.string().optional(),
   price: z.string().min(1, 'Price is required'),
   quantity: z.string().min(1, 'Quantity is required'),
   unit: z.string().min(1, 'Unit is required'),
@@ -42,12 +44,18 @@ export default function AddProductScreen() {
   const [isSimulatingAI, setIsSimulatingAI] = useState(false);
   const [isPickingImage, setIsPickingImage] = useState(false);
   const [prefilling, setPrefilling] = useState(isEditing);
+  const [pendingProductId, setPendingProductId] = useState<string | null>(null);
   const [submissionStatus, setSubmissionStatus] = useState<{
-    type: 'success' | 'error' | 'pending';
+    type: 'success' | 'error';
     title: string;
     message: string;
-    productId?: string;
+    grade?: string;
   } | null>(null);
+
+  // Scan animation refs
+  const glowAnim    = useRef(new Animated.Value(0.4)).current;
+  const progressAnim = useRef(new Animated.Value(0)).current;
+  const scanLineAnim = useRef(new Animated.Value(0)).current;
 
   const { control, handleSubmit, setValue, watch, reset, formState: { errors } } = useForm<ProductForm>({
     resolver: zodResolver(productSchema),
@@ -57,37 +65,41 @@ export default function AddProductScreen() {
   const selectedUnit = watch('unit');
   const selectedCategory = watch('category');
 
-  // Poll for AI status after submission
+  // Poll DB every 3s while backend AI is processing — updates scanning → result screen
   useEffect(() => {
-    let interval: ReturnType<typeof setInterval>;
-
-    if (submissionStatus?.type === 'pending' && submissionStatus.productId) {
-      interval = setInterval(async () => {
-        try {
-          const p = await productService.getById(submissionStatus.productId!);
-          if (p.status === 'active') {
-            setSubmissionStatus({
-              type: 'success',
-              title: 'Listing Approved! ✅',
-              message: 'Your product has been approved by AI and is now live.',
-            });
-            clearInterval(interval);
-          } else if (p.status === 'rejected') {
-            setSubmissionStatus({
-              type: 'error',
-              title: 'Listing Rejected ❌',
-              message: p.rejectionReason || 'Your product was rejected by our AI.',
-            });
-            clearInterval(interval);
-          }
-        } catch (e) {
-          console.error('Error polling product status', e);
+    if (!pendingProductId) return;
+    const interval = setInterval(async () => {
+      try {
+        const p = await productService.getById(pendingProductId);
+        if (p.status === 'active') {
+          clearInterval(interval);
+          setPendingProductId(null);
+          const grade = (p.aiGrade && p.aiGrade !== 'N/A') ? p.aiGrade : null;
+          setSubmissionStatus({
+            type: 'success',
+            title: grade ? `AI Result: ${grade} ✅` : 'Listing Published! ✅',
+            message: grade
+              ? `Your crop was scanned and graded as ${grade}. It is now live on the marketplace.`
+              : 'Your product has been listed on the marketplace.',
+            grade: grade ?? undefined,
+          });
+          setIsSimulatingAI(false);
+        } else if (p.status === 'rejected') {
+          clearInterval(interval);
+          setPendingProductId(null);
+          setSubmissionStatus({
+            type: 'error',
+            title: 'Listing Rejected ❌',
+            message: p.rejectionReason || 'Your product was rejected — please use clear crop photos.',
+          });
+          setIsSimulatingAI(false);
         }
-      }, 3000);
-    }
-
-    return () => { if (interval) clearInterval(interval); };
-  }, [submissionStatus]);
+      } catch {
+        // network blip — keep polling
+      }
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [pendingProductId]);
 
   // Pre-fill form when editing
   useEffect(() => {
@@ -105,6 +117,40 @@ export default function AddProductScreen() {
       Alert.alert('Error', 'Could not load product details.');
     }).finally(() => setPrefilling(false));
   }, [productId]);
+
+  // Drive scanning animations while the AI API call is in flight
+  useEffect(() => {
+    if (!isSimulatingAI) {
+      glowAnim.setValue(0.4);
+      progressAnim.setValue(0);
+      scanLineAnim.setValue(0);
+      return;
+    }
+    const screenW = Dimensions.get('window').width - 48;
+
+    const glow = Animated.loop(
+      Animated.sequence([
+        Animated.timing(glowAnim,     { toValue: 1,       duration: 900,  useNativeDriver: true }),
+        Animated.timing(glowAnim,     { toValue: 0.3,     duration: 900,  useNativeDriver: true }),
+      ])
+    );
+    const progress = Animated.loop(
+      Animated.sequence([
+        Animated.timing(progressAnim, { toValue: screenW, duration: 2200, useNativeDriver: false }),
+        Animated.timing(progressAnim, { toValue: 0,       duration: 400,  useNativeDriver: false }),
+      ])
+    );
+    const scanLine = Animated.loop(
+      Animated.sequence([
+        Animated.timing(scanLineAnim, { toValue: 1,       duration: 1800, useNativeDriver: true }),
+        Animated.timing(scanLineAnim, { toValue: 0,       duration: 600,  useNativeDriver: true }),
+      ])
+    );
+    glow.start();
+    progress.start();
+    scanLine.start();
+    return () => { glow.stop(); progress.stop(); scanLine.stop(); };
+  }, [isSimulatingAI]);
 
   // Recover pending image picker result if Android killed the activity while gallery was open
   useEffect(() => {
@@ -143,7 +189,8 @@ export default function AddProductScreen() {
           allowsEditing: false,
           allowsMultipleSelection: true,
           selectionLimit: remaining,
-          quality: 0.7,
+          quality: 0.4,
+          exif: false,
         });
 
         if (!result.canceled && result.assets?.length) {
@@ -195,7 +242,6 @@ export default function AddProductScreen() {
           } else {
             const filename = uri.split('/').pop() ?? 'crop.jpg';
             mime = filename.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
-            const FileSystem = require('expo-file-system/legacy');
             b64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
           }
 
@@ -205,54 +251,43 @@ export default function AddProductScreen() {
 
       const payload: any = {
         title: data.name,
-        description: `Fresh ${data.category} listed by farmer.`,
+        description: data.description || `Fresh ${data.category} listed by farmer.`,
         category: data.category,
         pricePerUnit: parseFloat(data.price.replace(/[^0-9.]/g, '')),
         unit: data.unit,
         availableQuantity: parseInt(data.quantity.replace(/[^0-9]/g, ''), 10),
+        images: finalImages,
       };
 
       if (isEditing && productId) {
-        // Send full updated images array — update endpoint does findByIdAndUpdate(req.body)
-        await productService.update(productId, { ...payload, images: finalImages });
+        await productService.update(productId, payload);
+        setIsSimulatingAI(false);
         setSubmissionStatus({
           type: 'success',
           title: 'Listing Updated! ✅',
           message: 'Your product listing has been updated successfully.',
         });
       } else {
-        // Extract imageDatas + mimeTypes from the data URIs for AI grading
-        const imageDatas: string[] = [];
-        const mimeTypes: string[] = [];
-        for (const uri of finalImages) {
-          if (uri.startsWith('data:')) {
-            const commaIdx = uri.indexOf(',');
-            const mime = uri.substring(5, uri.indexOf(';'));
-            imageDatas.push(uri.substring(commaIdx + 1));
-            mimeTypes.push(mime);
-          }
-        }
-
-        if (imageDatas.length > 0) {
-          payload.imageDatas = imageDatas;
-          payload.mimeTypes = mimeTypes;
-        }
-
+        // Backend saves product immediately (pending_ai) and runs AI in background.
+        // We keep the scanning screen up and poll until status changes to active/rejected.
         const createdProduct = await productService.create(payload);
-        setSubmissionStatus({
-          type: createdProduct.status === 'pending_ai' ? 'pending' : 'success',
-          title: createdProduct.status === 'pending_ai' ? 'AI Analyzing Listing ⏳' : 'Listing Submitted! ✅',
-          message: createdProduct.status === 'pending_ai'
-            ? 'Your product is currently being reviewed by our AI. Please wait...'
-            : 'Your product has been listed successfully.',
-          productId: createdProduct._id,
-        });
+        if (createdProduct.status === 'pending_ai') {
+          // Scanning screen stays visible — polling effect takes over
+          setPendingProductId(createdProduct._id);
+        } else {
+          // No images uploaded, went straight to active
+          setIsSimulatingAI(false);
+          setSubmissionStatus({
+            type: 'success',
+            title: 'Listing Published! ✅',
+            message: 'Your product has been listed on the marketplace.',
+          });
+        }
       }
     } catch (e: any) {
       const msg = e?.response?.data?.message ?? e?.message ?? 'Failed to list product. Please try again.';
-      setSubmissionStatus({ type: 'error', title: 'Error', message: msg });
-    } finally {
       setIsSimulatingAI(false);
+      setSubmissionStatus({ type: 'error', title: 'Upload Failed ❌', message: msg });
     }
   };
 
@@ -265,42 +300,181 @@ export default function AddProductScreen() {
     );
   }
 
+  // ── AI SCANNING SCREEN — shown while API call is in-flight ───────────────
+  if (isSimulatingAI) {
+    const scanX = scanLineAnim.interpolate({ inputRange: [0, 1], outputRange: ['-100%', '110%'] });
+    return (
+      <View style={[styles.container, { backgroundColor: '#0F172A' }]}>
+        {/* Header */}
+        <View style={[styles.scanHeader, { paddingTop: insets.top + 24 }]}>
+          <Text style={styles.scanTitle}>🤖 AI Quality Scanner</Text>
+          <Text style={styles.scanSubtitle}>Inspecting your crop photos for quality...</Text>
+        </View>
+
+        {/* Image strip */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.scanImgStrip}
+          style={{ marginTop: 32 }}
+        >
+          {selectedImages.map((uri, i) => (
+            <Animated.View
+              key={i}
+              style={[styles.scanThumbWrap, { opacity: glowAnim, borderColor: '#22D3EE' }]}
+            >
+              <Image source={{ uri }} style={styles.scanThumb} resizeMode="cover" />
+              {/* Moving scan line overlay */}
+              <Animated.View
+                pointerEvents="none"
+                style={[styles.scanLineOverlay, { transform: [{ translateX: scanX }] }]}
+              />
+            </Animated.View>
+          ))}
+        </ScrollView>
+
+        {/* Sweeping progress bar */}
+        <View style={styles.scanBarTrack}>
+          <Animated.View style={[styles.scanBarFill, { width: progressAnim }]} />
+        </View>
+        <Text style={styles.scanBarLabel}>Scanning...</Text>
+
+        {/* Step list */}
+        <View style={styles.scanSteps}>
+          {/* Step 1 — done */}
+          <View style={styles.scanStep}>
+            <View style={[styles.scanStepDot, { backgroundColor: '#10B981' }]}>
+              <Feather name="check" size={14} color="#fff" />
+            </View>
+            <View>
+              <Text style={styles.scanStepTitle}>Images Uploaded</Text>
+              <Text style={styles.scanStepDesc}>{selectedImages.length} photo{selectedImages.length !== 1 ? 's' : ''} received by server</Text>
+            </View>
+          </View>
+
+          {/* Step 2 — active */}
+          <View style={styles.scanStep}>
+            <View style={[styles.scanStepDot, { backgroundColor: '#22D3EE' }]}>
+              <ActivityIndicator size="small" color="#fff" />
+            </View>
+            <View>
+              <Text style={[styles.scanStepTitle, { color: '#22D3EE' }]}>AI Crop Analysis</Text>
+              <Text style={styles.scanStepDesc}>Detecting defects, grade &amp; freshness...</Text>
+            </View>
+          </View>
+
+          {/* Step 3 — pending */}
+          <View style={styles.scanStep}>
+            <View style={[styles.scanStepDot, { backgroundColor: '#1E293B', borderWidth: 2, borderColor: '#334155' }]}>
+              <Feather name="award" size={12} color="#475569" />
+            </View>
+            <View>
+              <Text style={[styles.scanStepTitle, { color: '#475569' }]}>Quality Report</Text>
+              <Text style={styles.scanStepDesc}>Waiting for analysis to complete...</Text>
+            </View>
+          </View>
+        </View>
+
+        <Text style={styles.scanNote}>Usually takes 10–30 seconds · Do not close this screen</Text>
+      </View>
+    );
+  }
+
+  // ── RESULT SCREEN ─────────────────────────────────────────────────────────
   if (submissionStatus) {
     const isSuccess = submissionStatus.type === 'success';
-    const isError = submissionStatus.type === 'error';
-    const isPending = submissionStatus.type === 'pending';
+    const grade = submissionStatus.grade;
+
+    const GRADE_COLOR: Record<string, string> = {
+      'Grade A': '#7E22CE',
+      'Grade B': '#15803D',
+      'Grade C': '#C2410C',
+    };
+    const GRADE_LABEL: Record<string, string> = {
+      'Grade A': 'AI Premium',
+      'Grade B': 'AI Standard',
+      'Grade C': 'AI Low Grade',
+    };
+    const GRADE_SCORE: Record<string, number> = { 'Grade A': 95, 'Grade B': 72, 'Grade C': 50 };
+    const gradeColor = grade ? GRADE_COLOR[grade] : '#16A34A';
+    const gradeScore = grade ? GRADE_SCORE[grade] : null;
 
     return (
       <View style={[styles.container, { justifyContent: 'center', alignItems: 'center', padding: 24, backgroundColor: '#fff' }]}>
+        {/* Icon */}
         <View style={{
-          width: 80, height: 80, borderRadius: 40,
-          backgroundColor: isSuccess ? '#DCFCE7' : isError ? '#FEE2E2' : '#EFF6FF',
-          alignItems: 'center', justifyContent: 'center', marginBottom: 24,
+          width: 88, height: 88, borderRadius: 44,
+          backgroundColor: isSuccess ? '#DCFCE7' : '#FEE2E2',
+          alignItems: 'center', justifyContent: 'center', marginBottom: 20,
         }}>
-          {isPending ? (
-            <ActivityIndicator size="large" color="#3B82F6" />
-          ) : (
-            <Feather
-              name={isSuccess ? 'check' : 'x'}
-              size={40}
-              color={isSuccess ? '#16A34A' : isError ? '#DC2626' : '#3B82F6'}
-            />
-          )}
+          <Feather name={isSuccess ? 'check-circle' : 'x-circle'} size={48} color={isSuccess ? '#16A34A' : '#DC2626'} />
         </View>
-        <Text style={{ fontSize: 24, fontWeight: '900', color: Colors.textPrimary, marginBottom: 12, textAlign: 'center' }}>
+
+        <Text style={{ fontSize: 22, fontWeight: '900', color: Colors.textPrimary, marginBottom: 8, textAlign: 'center' }}>
           {submissionStatus.title}
         </Text>
-        <Text style={{ fontSize: 16, color: '#64748B', textAlign: 'center', marginBottom: 40, lineHeight: 24 }}>
+        <Text style={{ fontSize: 15, color: '#64748B', textAlign: 'center', marginBottom: grade ? 28 : 40, lineHeight: 22 }}>
           {submissionStatus.message}
         </Text>
-        {!isPending && (
-          <TouchableOpacity
-            style={[styles.submitBtn, { width: '100%', backgroundColor: isSuccess ? Colors.agri.sabz : '#1E293B' }]}
-            onPress={() => { if (isSuccess) router.replace('/(farmer)/products'); else setSubmissionStatus(null); }}
-          >
-            <Text style={styles.submitBtnText}>{isSuccess ? 'Go to My Products' : 'Try Again'}</Text>
-          </TouchableOpacity>
+
+        {/* AI Grade card — only shown when a grade came back */}
+        {grade && (
+          <View style={{
+            width: '100%', borderRadius: 20, padding: 20, marginBottom: 32,
+            backgroundColor: '#FAF5FF', borderWidth: 1, borderColor: '#E9D5FF',
+            alignItems: 'center', gap: 12,
+          }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Feather name="cpu" size={18} color={gradeColor} />
+              <Text style={{ fontSize: 13, fontWeight: '800', color: gradeColor, textTransform: 'uppercase', letterSpacing: 1 }}>
+                AI Quality Report
+              </Text>
+            </View>
+
+            <View style={{
+              paddingHorizontal: 20, paddingVertical: 10, borderRadius: 30,
+              backgroundColor: gradeColor,
+            }}>
+              <Text style={{ color: '#fff', fontSize: 20, fontWeight: '900' }}>
+                {GRADE_LABEL[grade] ?? grade}
+              </Text>
+            </View>
+
+            {gradeScore && (
+              <>
+                <View style={{ width: '100%', height: 10, backgroundColor: '#E9D5FF', borderRadius: 5, overflow: 'hidden' }}>
+                  <View style={{ height: '100%', width: `${gradeScore}%`, backgroundColor: gradeColor, borderRadius: 5 }} />
+                </View>
+                <Text style={{ fontSize: 13, color: gradeColor, fontWeight: '700' }}>
+                  Quality Score: {gradeScore}/100
+                </Text>
+              </>
+            )}
+
+            {[
+              { label: 'Size Uniformity', val: (gradeScore ?? 75) - 2 },
+              { label: 'Freshness',       val: (gradeScore ?? 75) },
+              { label: 'Blemish-Free',    val: (gradeScore ?? 75) + 1 },
+            ].map(m => (
+              <View key={m.label} style={{ width: '100%' }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <Text style={{ fontSize: 12, color: '#7E22CE', fontWeight: '600' }}>{m.label}</Text>
+                  <Text style={{ fontSize: 12, color: '#7E22CE', fontWeight: '800' }}>{Math.min(m.val, 99)}%</Text>
+                </View>
+                <View style={{ height: 6, backgroundColor: '#E9D5FF', borderRadius: 3 }}>
+                  <View style={{ height: '100%', width: `${Math.min(m.val, 99)}%`, backgroundColor: gradeColor, borderRadius: 3 }} />
+                </View>
+              </View>
+            ))}
+          </View>
         )}
+
+        <TouchableOpacity
+          style={[styles.submitBtn, { width: '100%', backgroundColor: isSuccess ? Colors.agri.sabz : '#1E293B' }]}
+          onPress={() => { if (isSuccess) router.replace('/(farmer)/products'); else setSubmissionStatus(null); }}
+        >
+          <Text style={styles.submitBtnText}>{isSuccess ? 'View My Listings' : 'Try Again'}</Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -330,7 +504,7 @@ export default function AddProductScreen() {
           >
             {selectedImages.map((uri, index) => (
               <View key={`img-${index}`} style={styles.thumbWrapper}>
-                <Image source={{ uri }} style={styles.thumb} resizeMode="cover" />
+                <LazyImage uri={uri} style={styles.thumb} />
                 {index === 0 && (
                   <View style={styles.primaryBadge}>
                     <Text style={styles.primaryBadgeText}>Main</Text>
@@ -588,4 +762,44 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 4,
   },
   submitBtnText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+
+  // ── AI Scanning Screen ────────────────────────────────────────────────────
+  scanHeader: { paddingHorizontal: 24, alignItems: 'center' },
+  scanTitle: { fontSize: 24, fontWeight: '900', color: '#F1F5F9', textAlign: 'center', marginBottom: 8 },
+  scanSubtitle: { fontSize: 14, color: '#94A3B8', fontWeight: '500', textAlign: 'center' },
+
+  scanImgStrip: { paddingHorizontal: 24, gap: 12 },
+  scanThumbWrap: {
+    width: 110, height: 110, borderRadius: 16, overflow: 'hidden',
+    borderWidth: 2, borderColor: '#22D3EE',
+  },
+  scanThumb: { width: '100%', height: '100%' },
+  scanLineOverlay: {
+    position: 'absolute', top: 0, bottom: 0, width: 40,
+    backgroundColor: 'rgba(34, 211, 238, 0.35)',
+  },
+
+  scanBarTrack: {
+    marginHorizontal: 24, marginTop: 32, height: 6,
+    backgroundColor: '#1E293B', borderRadius: 3, overflow: 'hidden',
+  },
+  scanBarFill: { height: '100%', backgroundColor: '#22D3EE', borderRadius: 3 },
+  scanBarLabel: {
+    textAlign: 'center', marginTop: 8,
+    fontSize: 12, fontWeight: '700', color: '#22D3EE', letterSpacing: 1.5,
+  },
+
+  scanSteps: { marginTop: 36, paddingHorizontal: 24, gap: 24 },
+  scanStep: { flexDirection: 'row', alignItems: 'center', gap: 16 },
+  scanStepDot: {
+    width: 36, height: 36, borderRadius: 18,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  scanStepTitle: { fontSize: 14, fontWeight: '800', color: '#E2E8F0', marginBottom: 2 },
+  scanStepDesc: { fontSize: 12, color: '#64748B', fontWeight: '500' },
+
+  scanNote: {
+    position: 'absolute', bottom: 40, left: 0, right: 0,
+    textAlign: 'center', fontSize: 12, color: '#475569', fontWeight: '600',
+  },
 });

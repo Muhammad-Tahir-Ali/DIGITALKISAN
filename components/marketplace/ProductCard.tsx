@@ -61,6 +61,25 @@ export const ProductCard = React.memo(function ProductCard({ item }: Props) {
           <Text style={styles.verifiedText}>Verified</Text>
         </View>
 
+        {/* AI grade badge — top right */}
+        {item.aiGrade && item.aiGrade !== 'N/A' && (
+          <View style={[
+            styles.aiBadge,
+            item.aiGrade === 'Grade A' ? styles.aiBadgeA
+              : item.aiGrade === 'Grade B' ? styles.aiBadgeB
+              : styles.aiBadgeC,
+          ]}>
+            <Text style={[
+              styles.aiBadgeText,
+              item.aiGrade === 'Grade A' ? styles.aiBadgeTextA
+                : item.aiGrade === 'Grade B' ? styles.aiBadgeTextB
+                : styles.aiBadgeTextC,
+            ]}>
+              {item.aiGrade === 'Grade A' ? 'AI Premium' : item.aiGrade === 'Grade B' ? 'AI Standard' : 'AI Low'}
+            </Text>
+          </View>
+        )}
+
         {/* Low stock ribbon */}
         {isLowStock && (
           <View style={styles.stockRibbon}>
@@ -132,6 +151,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 7, paddingVertical: 3, borderRadius: 8,
   },
   verifiedText: { fontSize: 9, fontWeight: '700', color: Colors.success },
+  aiBadge: {
+    position: 'absolute', top: 8, right: 8,
+    paddingHorizontal: 6, paddingVertical: 3, borderRadius: 8, borderWidth: 1,
+  },
+  aiBadgeA: { backgroundColor: '#F3E8FF', borderColor: '#D8B4FE' },
+  aiBadgeB: { backgroundColor: '#DCFCE7', borderColor: '#86EFAC' },
+  aiBadgeC: { backgroundColor: '#FFF7ED', borderColor: '#FED7AA' },
+  aiBadgeText: { fontSize: 8, fontWeight: '800' },
+  aiBadgeTextA: { color: '#7E22CE' },
+  aiBadgeTextB: { color: '#15803D' },
+  aiBadgeTextC: { color: '#C2410C' },
   stockRibbon: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
     backgroundColor: 'rgba(220, 38, 38, 0.88)',

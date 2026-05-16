@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Feather } from '@expo/vector-icons';
@@ -25,13 +25,9 @@ export default function LanguageScreen() {
   }, []);
 
   const pick = async (code: 'en' | 'ur') => {
+    if (code === 'ur') return; // not yet available
     setSelected(code);
     await AsyncStorage.setItem(STORAGE_KEY, code);
-    const msg = code === 'ur'
-      ? 'اردو ترجمہ جلد آ رہا ہے۔ آپ کی ترجیح محفوظ کر دی گئی ہے۔'
-      : 'Your language preference is saved. Full Urdu translation is rolling out soon.';
-    if (Platform.OS === 'web') window.alert(msg);
-    else Alert.alert('Language Saved', msg);
   };
 
   return (
@@ -48,18 +44,28 @@ export default function LanguageScreen() {
 
         {LANGS.map(l => {
           const isSel = selected === l.code;
+          const isDisabled = l.code === 'ur';
           return (
             <TouchableOpacity
               key={l.code}
-              style={[styles.row, isSel && styles.rowSel]}
+              style={[styles.row, isSel && styles.rowSel, isDisabled && styles.rowDisabled]}
               onPress={() => pick(l.code)}
-              activeOpacity={0.7}
+              activeOpacity={isDisabled ? 1 : 0.7}
             >
-              <View>
-                <Text style={[styles.rowLabel, isSel && styles.rowLabelSel]}>{l.label}</Text>
-                <Text style={styles.rowNative}>{l.native}</Text>
+              <View style={{ flex: 1 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Text style={[styles.rowLabel, isSel && styles.rowLabelSel, isDisabled && styles.rowLabelDisabled]}>
+                    {l.label}
+                  </Text>
+                  {isDisabled && (
+                    <View style={styles.comingSoonBadge}>
+                      <Text style={styles.comingSoonText}>Coming Soon</Text>
+                    </View>
+                  )}
+                </View>
+                <Text style={[styles.rowNative, isDisabled && styles.rowNativeDisabled]}>{l.native}</Text>
               </View>
-              <View style={[styles.radio, isSel && styles.radioSel]}>
+              <View style={[styles.radio, isSel && styles.radioSel, isDisabled && styles.radioDisabled]}>
                 {isSel && <View style={styles.radioInner} />}
               </View>
             </TouchableOpacity>
@@ -69,8 +75,7 @@ export default function LanguageScreen() {
         <View style={styles.note}>
           <Feather name="info" size={14} color={Colors.textSecondary} />
           <Text style={styles.noteText}>
-            Urdu UI is currently in beta. Some screens may still display in English while we
-            complete the translation.
+            Urdu translation is in progress. We'll notify you when it's ready.
           </Text>
         </View>
       </ScrollView>
@@ -109,6 +114,21 @@ const styles = StyleSheet.create({
   },
   radioSel: { borderColor: Colors.primary },
   radioInner: { width: 10, height: 10, borderRadius: 5, backgroundColor: Colors.primary },
+
+  rowDisabled: { opacity: 0.55 },
+  rowLabelDisabled: { color: Colors.textSecondary },
+  rowNativeDisabled: { color: Colors.textTertiary },
+  radioDisabled: { borderColor: '#D1D5DB' },
+  comingSoonBadge: {
+    backgroundColor: Colors.secondaryLight,
+    paddingHorizontal: 7, paddingVertical: 2,
+    borderRadius: 6,
+  },
+  comingSoonText: {
+    fontSize: 10, fontWeight: '800',
+    color: Colors.secondaryDark,
+    textTransform: 'uppercase', letterSpacing: 0.3,
+  },
 
   note: {
     flexDirection: 'row', alignItems: 'flex-start', gap: 8,

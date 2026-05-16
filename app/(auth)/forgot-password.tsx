@@ -29,14 +29,18 @@ export default function ForgotPasswordScreen() {
 
   const onSubmit = async (data: ForgotForm) => {
     try {
-      await requestPasswordReset(data.email);
+      const response = await requestPasswordReset(data.email);
       const goNext = () =>
         router.push({
           pathname: '/(auth)/reset-password' as any,
           params: { email: data.email, role: role ?? '' },
         });
 
-      const msg = `If an account exists for ${data.email}, a 6-digit reset code has been sent. Check your inbox (and spam folder).`;
+      let msg = `If an account exists for ${data.email}, a 6-digit reset code has been sent. Check your inbox (and spam folder).`;
+      if (response && response.devCode) {
+        msg += `\n\n[DEV MODE] Your code is: ${response.devCode}`;
+      }
+
       if (Platform.OS === 'web') {
         window.alert(msg);
         goNext();
