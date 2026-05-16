@@ -1,5 +1,5 @@
 # 🌾 DIGITAL KISAN — PROJECT INIT REFERENCE
-> Last Updated: 2026-05-16 | Read this first before working on ANY feature.
+> Last Updated: 2026-05-16 (Session 3) | Read this first before working on ANY feature.
 
 ---
 
@@ -546,6 +546,13 @@ curl http://localhost:3000/api/v1/health
 | Multi-image upload | ✅ FIXED | Up to 5 images, thumbnail strip, AI grades all images in parallel |
 | Dashboard blank on product fetch fail | ✅ FIXED | Pending AI count fetched independently, never blocks main Promise.all |
 | JazzCash/Easypaisa payout | 🚧 Future | Withdrawal integration pending |
+| Farmer dashboard stats inaccurate | ✅ FIXED | totalProducts ($ne hidden), activeOrders (paid/bidding/in_transit/disputed), totalEarnings (wallet.totalEarned) |
+| Wallet history credit/debit wrong | ✅ FIXED | Now uses direction field; tabs + balanceAfter added |
+| Wallet recent earnings wrong | ✅ FIXED | Filtered to escrow_release credits from WalletTransaction |
+| AI always Grade B | ✅ FIXED | thinkingBudget:0 + last-digit regex in ai.service.js |
+| AI scan result page reappears | ✅ FIXED | State fully reset before navigating away on success |
+| Buyer home misses new products | ✅ FIXED | useFocusEffect refetch() bypasses 5min stale time |
+| Product images not saving to DB | ✅ FIXED | Background AI (fire-and-forget) + frontend polling; Axios timeout 90s |
 
 ---
 
@@ -720,6 +727,52 @@ in_transit orders found → requestForegroundPermissionsAsync()
 - ✅ Timestamp present in every payload
 - ✅ Buyer role cannot broadcast location (role guard)
 - ✅ Multiple sequential location updates relayed correctly
+
+---
+
+## 20. LATEST UPDATES — SESSION 3 (2026-05-16)
+
+### AI Scanning — Background + Polling Architecture
+- **Root cause of image-not-saving:** Synchronous Gemini call inside the HTTP handler was killed by Render's 30s HTTP timeout + Axios 15s client timeout before Gemini finished.
+- **Fix (`backend/src/controllers/product.controller.js`):** `processProductAI` is now a fire-and-forget background function. HTTP response is sent immediately with `status: 'pending_ai'`. AI runs after response.
+- **Frontend polling (`app/(farmer)/products/add.tsx`):** After `createdProduct.status === 'pending_ai'`, sets `pendingProductId` state. A `useEffect` polls `productService.getById(pendingProductId)` every 3s. When status becomes `active` or `rejected`, polling stops, scanning animation hides, result screen shows.
+- **Axios timeout:** `productService.create()` now uses `{ timeout: 90000 }` (90s) to handle large base64 image uploads.
+- **`services/product.service.ts`:** Added `aiGrade?: 'N/A' | 'Grade C' | 'Grade B' | 'Grade A'` to `Product` interface; added `direction: 'credit' | 'debit'` to `WalletTransaction` interface.
+
+### AI Grading — Always Grade B Bug Fix
+- **Root cause (`backend/src/services/ai.service.js`):** `gemini-2.5-flash-lite` is a thinking model. Its response includes reasoning text (e.g. "Step **2**: inspect for defects…") before the final digit. The original regex `rawText.match(/[0-3]/)?.[0]` was extracting the first `[0-3]` digit — which was always "2" from the reasoning — not the actual grade at the end.
+- **Fix 1:** `generationConfig: { thinkingConfig: { thinkingBudget: 0 } }` — disables thinking tokens in the response text.
+- **Fix 2:** `rawText.match(/[0-3]/g)?.at(-1) ?? '0'` — takes the **last** matching digit (the actual answer) instead of the first.
+
+### Product Detail — AI Quality Panel Always Visible
+- **`app/(buyer)/products/detail/[id].tsx`:** AI Quality Analysis panel now renders even when `quality === null` (no grade yet). Shows empty placeholder bars + spinning "Pending" badge + note text instead of being hidden entirely.
+
+### Farmer Dashboard Stats (All 5 Fixed)
+- **`backend/src/controllers/user.controller.js`** — all 5 queries run via `Promise.all`:
+  - `totalProducts`: `{ status: { $ne: 'hidden' } }` — was counting soft-deleted products, inflating the number.
+  - `activeOrdersCount`: `$in: ['paid', 'bidding', 'in_transit', 'disputed']` — was `pending || paid`, missing most active states.
+  - `completedOrdersCount`: `status: 'delivered'` (unchanged, was correct).
+  - `todaysEarnings`: WalletTransaction aggregate for `escrow_release + credit + completed + createdAt >= startOfDay`.
+  - `totalEarnings`: `req.user.wallet?.totalEarned ?? 0` — was summing `order.totalPrice * 0.95` which is wrong (doesn't account for delivery fee split).
+- **`app/(farmer)/dashboard.tsx`:** Active orders filter uses `paid || bidding || in_transit || disputed`. CTA labels per status: "Process Order →" (paid), "Find Logistics →" (bidding), "Track Delivery →" (in_transit), "Resolve Dispute →" (disputed, red).
+
+### Farmer Wallet Screen Fix
+- **`app/(farmer)/wallet/index.tsx`:** Recent earnings now filtered from `WalletTransaction` history: `type === 'escrow_release' && direction === 'credit'`. Shows `tx.amount` (exact net, after 5% fee) and `tx.createdAt` (payment received date). Previously used wrong data source (order prices).
+
+### Wallet History Screen — Full Rewrite
+- **`app/(farmer)/wallet/history.tsx`:**
+  - `isCredit = item.direction === 'credit'` — was checking `item.type` (e.g. `escrow_release` can be either credit or debit).
+  - `getLabel(type, direction)` function maps every type+direction combo to human-readable string.
+  - Summary row: Total In / Total Out / Transaction count.
+  - Filter tabs: All / Money In / Money Out.
+  - `balanceAfter` displayed on every transaction row.
+  - `useFocusEffect` replaces `useEffect` for refresh on screen focus.
+
+### Buyer Home — Auto-Refresh New Products
+- **`app/(buyer)/home.tsx`:** Added `useFocusEffect(useCallback(() => { refetch(); }, [refetch]))`. Calls `refetch()` every time the buyer navigates to the home tab, bypassing the 5-minute TanStack Query stale time. New farmer listings now appear immediately.
+
+### Add Product — Result Page Stale State Bug Fix
+- **`app/(farmer)/products/add.tsx`:** On "View My Listings" success button: resets `submissionStatus`, `selectedImages`, `pendingProductId`, `isSimulatingAI`, and the form via `reset()` before calling `router.replace`. Expo Router caches screens; without this reset, the result page would re-appear on the next "Add Product" navigation.
 
 ---
 

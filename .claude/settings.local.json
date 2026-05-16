@@ -53,7 +53,13 @@
       "Skill(superpowers:subagent-driven-development)",
       "Skill(superpowers:finishing-a-development-branch)",
       "Skill(superpowers:systematic-debugging)",
-      "Bash(git remote *)"
+      "Bash(git remote *)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\Muhammad Tahir\\\\Desktop\\\\DIGITAL KISAN\\\\DigitalKisan\" -Directory)",
+      "Bash(wait *)",
+      "Bash(xargs grep -l \"classifyCrop\\\\|aiGrade\\\\|Grade\\\\|gemini\\\\|Gemini\")",
+      "Bash(git log *)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\Muhammad Tahir\\\\Desktop\\\\DIGITAL KISAN\\\\backend\\\\src\\\\routes\" -Recurse -Filter \"*.ts\")",
+      "Bash(dir /s /b \"C:\\\\Users\\\\Muhammad Tahir\\\\Desktop\\\\DIGITAL KISAN\\\\admin\\\\src\")"
     ]
   }
 }
