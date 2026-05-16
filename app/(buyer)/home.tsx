@@ -4,7 +4,7 @@ import {
   ScrollView, Platform, TextInput, FlatList,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { Bell, ShoppingCart, Search, X, Wheat, Carrot, Apple, Leaf, Star, ShieldCheck, Repeat } from 'lucide-react-native';
 import { Colors } from '@/constants/colors';
@@ -70,10 +70,12 @@ export default function BuyerHome() {
 
   // React Query: caches the product list (5min staleTime in root config), avoids
   // refetching when navigating back to home, and shares cache with detail screen.
-  const { data: products = [], isLoading: loading } = useQuery<Product[]>({
+  const { data: products = [], isLoading: loading, refetch } = useQuery<Product[]>({
     queryKey: ['products', 'all'],
     queryFn: () => productService.getAll(),
   });
+
+  useFocusEffect(useCallback(() => { refetch(); }, [refetch]));
 
   const isSearching = searchQuery.trim().length > 0;
 
