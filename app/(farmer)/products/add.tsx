@@ -471,7 +471,18 @@ export default function AddProductScreen() {
 
         <TouchableOpacity
           style={[styles.submitBtn, { width: '100%', backgroundColor: isSuccess ? Colors.agri.sabz : '#1E293B' }]}
-          onPress={() => { if (isSuccess) router.replace('/(farmer)/products'); else setSubmissionStatus(null); }}
+          onPress={() => {
+            if (isSuccess) {
+              setSubmissionStatus(null);
+              setSelectedImages([]);
+              setPendingProductId(null);
+              setIsSimulatingAI(false);
+              reset({ name: '', price: '', quantity: '', unit: 'kg', category: 'grains' });
+              router.replace('/(farmer)/products');
+            } else {
+              setSubmissionStatus(null);
+            }
+          }}
         >
           <Text style={styles.submitBtnText}>{isSuccess ? 'View My Listings' : 'Try Again'}</Text>
         </TouchableOpacity>
