@@ -2,7 +2,7 @@ import React, { useState, useCallback } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity,
   StyleSheet, ActivityIndicator,
-  RefreshControl, Alert,
+  RefreshControl, Alert, Image,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
@@ -104,7 +104,15 @@ export default function FarmerOrdersScreen() {
 
         {/* Product row */}
         <View style={styles.productRow}>
-          <View style={styles.productEmoji}><Text style={{ fontSize: 24 }}>🌾</Text></View>
+          {item.product?.images?.[0] ? (
+            <Image
+              source={{ uri: item.product.images[0] }}
+              style={styles.productImage}
+              resizeMode="cover"
+            />
+          ) : (
+            <View style={styles.productEmoji}><Text style={{ fontSize: 24 }}>🌾</Text></View>
+          )}
           <View style={{ flex: 1 }}>
             <Text style={styles.productName}>{item.product?.title ?? 'Product'}</Text>
             <Text style={styles.productMeta}>
@@ -265,6 +273,7 @@ const styles = StyleSheet.create({
   statusText: { fontSize: 11, fontWeight: '800' },
   productRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 10 },
   productEmoji: { width: 44, height: 44, borderRadius: 12, backgroundColor: '#F0FDF4', alignItems: 'center', justifyContent: 'center' },
+  productImage: { width: 44, height: 44, borderRadius: 12 },
   productName: { fontSize: 14, fontWeight: '800', color: '#111827', marginBottom: 2 },
   productMeta: { fontSize: 12, color: Colors.textSecondary, fontWeight: '600' },
   infoRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },

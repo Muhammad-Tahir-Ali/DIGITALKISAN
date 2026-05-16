@@ -17,7 +17,7 @@ let socket: Socket | null = null;
 
 export const socketService = {
   connect(): Socket {
-    if (socket?.connected) return socket;
+    if (socket) return socket;
 
     const token = useAuthStore.getState().token;
     socket = io(SOCKET_URL, {

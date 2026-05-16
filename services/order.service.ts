@@ -15,7 +15,7 @@ export interface Order {
   _id: string;
   buyer: { _id: string; name: string; phone: string };
   farmer: { _id: string; name: string; phone: string; location?: { address: string } };
-  product: { _id: string; title: string; pricePerUnit: number };
+  product: { _id: string; title: string; pricePerUnit: number; images?: string[] };
   logisticsProvider?: { _id: string; name: string; phone: string };
   quantity: number;
   deliveryFee?: number;

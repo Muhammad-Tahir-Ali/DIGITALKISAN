@@ -10,6 +10,9 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '@/hooks/useAuth';
 import { Colors } from '@/constants/colors';
+import productService, { Product } from '@/services/product.service';
+import reviewService, { Review } from '@/services/review.service';
+import { SkeletonLoader } from '@/components/ui';
 
 const KEY_NOTIFS = '@digitalkisan:pref:notifs';
 const KEY_LANG   = '@digitalkisan:lang';
@@ -79,6 +82,10 @@ export default function FarmerProfile() {
   const [notifs, setNotifs]       = React.useState(true);
   const [langLabel, setLangLabel] = React.useState('English');
 
+  const [products, setProducts] = React.useState<Product[]>([]);
+  const [reviews, setReviews]   = React.useState<Review[]>([]);
+  const [loading, setLoading]   = React.useState(true);
+
   useFocusEffect(
     React.useCallback(() => {
       AsyncStorage.getItem(KEY_NOTIFS).then(v => {
@@ -87,7 +94,21 @@ export default function FarmerProfile() {
       AsyncStorage.getItem(KEY_LANG).then(code => {
         setLangLabel(code === 'ur' ? 'اردو' : 'English');
       });
-    }, [])
+
+      // Fetch products and reviews
+      setLoading(true);
+      Promise.all([
+        productService.getMyProducts(),
+        reviewService.getForTarget(user?._id || '', 'User')
+      ]).then(([prods, revs]) => {
+        setProducts(prods);
+        setReviews(revs);
+      }).catch(err => {
+        console.error('Farmer Profile Load Error:', err);
+      }).finally(() => {
+        setLoading(false);
+      });
+    }, [user?._id])
   );
 
   const toggleNotifs = async (v: boolean) => {
@@ -150,6 +171,54 @@ export default function FarmerProfile() {
 
       {/* ── SECTIONS ─────────────────────────────────────────── */}
       <View style={styles.sections}>
+
+        {/* Active Listings */}
+        <SectionCard title="My Active Listings">
+          {loading ? (
+            <View style={{ padding: 16 }}><SkeletonLoader.Box height={60} borderRadius={12} /></View>
+          ) : products.filter(p => p.status === 'active').length === 0 ? (
+            <View style={styles.emptyBox}>
+              <Text style={styles.emptyText}>No active listings found.</Text>
+            </View>
+          ) : (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizList}>
+              {products.filter(p => p.status === 'active').map(prod => (
+                <TouchableOpacity 
+                  key={prod._id} 
+                  style={styles.listingChip}
+                  onPress={() => router.push(`/(farmer)/inventory` as any)}
+                >
+                  <Text style={styles.listingTitle} numberOfLines={1}>{prod.title}</Text>
+                  <Text style={styles.listingPrice}>₨ {prod.pricePerUnit}/{prod.unit}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          )}
+        </SectionCard>
+
+        {/* Reviews */}
+        <SectionCard title="Recent Reviews">
+          {loading ? (
+            <View style={{ padding: 16 }}><SkeletonLoader.Box height={80} borderRadius={12} /></View>
+          ) : reviews.length === 0 ? (
+            <View style={styles.emptyBox}>
+              <Text style={styles.emptyText}>No reviews yet.</Text>
+            </View>
+          ) : (
+            reviews.slice(0, 3).map((rev, i) => (
+              <View key={rev._id} style={[styles.reviewRow, i === 0 && { borderTopWidth: 0 }]}>
+                <View style={styles.reviewHeader}>
+                  <Text style={styles.reviewerName}>{rev.reviewer.name}</Text>
+                  <View style={styles.reviewRating}>
+                    <Feather name="star" size={10} color="#F59E0B" />
+                    <Text style={styles.ratingText}>{rev.rating}</Text>
+                  </View>
+                </View>
+                <Text style={styles.reviewComment} numberOfLines={2}>{rev.comment}</Text>
+              </View>
+            ))
+          )}
+        </SectionCard>
 
         {/* Account */}
         <SectionCard title="Account">
@@ -294,6 +363,29 @@ const styles = StyleSheet.create({
   rowLabelDanger: { color: Colors.error },
   rowRight:       { flexDirection: 'row', alignItems: 'center', gap: 6 },
   rowValue:       { fontSize: 13, color: Colors.textSecondary, fontWeight: '500' },
+
+  // ── Listings ──────────────────────────────────────────────
+  horizList: { padding: 12, gap: 10 },
+  listingChip: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1, borderColor: '#E2E8F0',
+    borderRadius: 12, padding: 10, width: 120,
+  },
+  listingTitle: { fontSize: 12, fontWeight: '700', color: Colors.textPrimary, marginBottom: 2 },
+  listingPrice: { fontSize: 11, color: Colors.agri.sabz, fontWeight: '800' },
+
+  // ── Reviews ───────────────────────────────────────────────
+  reviewRow: {
+    padding: 14, borderTopWidth: 1, borderTopColor: Colors.cardBorder,
+  },
+  reviewHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
+  reviewerName: { fontSize: 13, fontWeight: '700', color: Colors.textPrimary },
+  reviewRating: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  ratingText:   { fontSize: 11, fontWeight: '800', color: '#B45309' },
+  reviewComment: { fontSize: 12, color: Colors.textSecondary, lineHeight: 18 },
+
+  emptyBox: { padding: 20, alignItems: 'center' },
+  emptyText: { fontSize: 12, color: '#94A3B8', fontWeight: '500' },
 
   // ── Sign Out ──────────────────────────────────────────────
   logoutCard: {

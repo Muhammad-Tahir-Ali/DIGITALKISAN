@@ -37,7 +37,7 @@ export default function ForgotPasswordScreen() {
         });
 
       let msg = `If an account exists for ${data.email}, a 6-digit reset code has been sent. Check your inbox (and spam folder).`;
-      if (response && response.devCode) {
+      if (__DEV__ && response && response.devCode) {
         msg += `\n\n[DEV MODE] Your code is: ${response.devCode}`;
       }
 

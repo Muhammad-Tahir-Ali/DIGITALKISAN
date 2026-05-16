@@ -5,6 +5,8 @@ import {
 } from 'react-native';
 import * as Location from 'expo-location';
 import { Feather } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
+import { useRouter } from 'expo-router';
 import { Colors } from '@/constants/colors';
 import orderService, { Order, OrderStatus } from '@/services/order.service';
 import { socketService } from '@/services/socket.service';
@@ -15,7 +17,15 @@ const STATUS_LABELS: Record<string, { label: string; bg: string; text: string; d
   cancelled:  { label: 'Cancelled',   bg: '#F1F5F9', text: '#475569', dot: '#94A3B8' },
 };
 
-function ActiveJobCard({ order, onMarkDelivered }: { order: Order; onMarkDelivered: (o: Order) => void }) {
+function ActiveJobCard({
+  order,
+  onMarkDelivered,
+  onTrackMap,
+}: {
+  order: Order;
+  onMarkDelivered: (o: Order) => void;
+  onTrackMap: () => void;
+}) {
   const cfg = STATUS_LABELS[order.status] ?? STATUS_LABELS.in_transit;
   const isActive = order.status === 'in_transit';
 
@@ -68,16 +78,23 @@ function ActiveJobCard({ order, onMarkDelivered }: { order: Order; onMarkDeliver
 
       {/* Actions */}
       {isActive && (
-        <TouchableOpacity style={styles.deliveredBtn} onPress={() => onMarkDelivered(order)} activeOpacity={0.85}>
-          <Feather name="check-circle" size={16} color="#fff" />
-          <Text style={styles.deliveredText}>Mark as Delivered</Text>
-        </TouchableOpacity>
+        <>
+          <TouchableOpacity style={styles.mapBtn} onPress={onTrackMap} activeOpacity={0.85}>
+            <Feather name="map-pin" size={14} color="#2563EB" />
+            <Text style={styles.mapBtnText}>Track on Map</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.deliveredBtn} onPress={() => onMarkDelivered(order)} activeOpacity={0.85}>
+            <Feather name="check-circle" size={16} color="#fff" />
+            <Text style={styles.deliveredText}>Mark as Delivered</Text>
+          </TouchableOpacity>
+        </>
       )}
     </View>
   );
 }
 
 export default function ActiveDeliveries() {
+  const router = useRouter();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -99,7 +116,7 @@ export default function ActiveDeliveries() {
     }
   }, []);
 
-  useEffect(() => { fetchOrders(); }, [fetchOrders]);
+  useFocusEffect(useCallback(() => { fetchOrders(); }, [fetchOrders]));
 
   // Start broadcasting GPS for all in_transit orders
   useEffect(() => {
@@ -227,7 +244,11 @@ export default function ActiveDeliveries() {
           data={displayed}
           keyExtractor={item => item._id}
           renderItem={({ item }) => (
-            <ActiveJobCard order={item} onMarkDelivered={handleMarkDelivered} />
+            <ActiveJobCard
+              order={item}
+              onMarkDelivered={handleMarkDelivered}
+              onTrackMap={() => router.push('/(logistics)/map' as any)}
+            />
           )}
           contentContainerStyle={styles.list}
           showsVerticalScrollIndicator={false}
@@ -332,6 +353,13 @@ const styles = StyleSheet.create({
 
   infoRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 14 },
   infoText: { fontSize: 12, color: Colors.textSecondary, fontWeight: '500', flex: 1 },
+
+  mapBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    borderWidth: 1, borderColor: '#BFDBFE', backgroundColor: '#EFF6FF',
+    borderRadius: 12, padding: 10, marginBottom: 8,
+  },
+  mapBtnText: { color: '#2563EB', fontSize: 13, fontWeight: '700' },
 
   deliveredBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',

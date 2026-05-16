@@ -46,7 +46,7 @@ export default function LogisticsEarningsScreen() {
       setWallet(walletData);
       // Logistics sees their own delivered orders
       const done = orders.filter(
-        (o) => o.status === 'delivered' && o.logisticsProvider?._id === currentUser?.id
+        (o) => o.status === 'delivered'
       );
       setDeliveries(done);
     } catch (e: any) {
@@ -215,9 +215,8 @@ export default function LogisticsEarningsScreen() {
                   </View>
                 </View>
                 <View style={styles.deliveryRight}>
-                  <Text style={styles.deliveryAmount}>₨ {(order.deliveryFee ?? 200).toLocaleString()}</Text>
-                  <Text style={styles.orderValueLabel}>Delivery Fee</Text>
                   <View style={styles.deliveredBadge}>
+                    <Feather name="check-circle" size={10} color={Colors.primary} />
                     <Text style={styles.deliveredText}>Delivered</Text>
                   </View>
                 </View>
@@ -316,9 +315,8 @@ const styles = StyleSheet.create({
   deliveryRoute: { fontSize: 11, color: Colors.textSecondary, fontWeight: '500', marginBottom: 3 },
   deliveryDate: { fontSize: 11, color: '#94A3B8', fontWeight: '500' },
   deliveryRight: { alignItems: 'flex-end', gap: 4, flexShrink: 0 },
-  deliveryAmount: { fontSize: 14, fontWeight: '900', color: '#1E40AF' },
-  orderValueLabel: { fontSize: 9, color: '#94A3B8', fontWeight: '600', textAlign: 'right' },
   deliveredBadge: {
+    flexDirection: 'row', gap: 4, alignItems: 'center',
     backgroundColor: '#ECFDF5', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8,
   },
   deliveredText: { fontSize: 9, fontWeight: '800', color: Colors.primary, textTransform: 'uppercase' },

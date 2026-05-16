@@ -1,101 +1,56 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, Alert, ActivityIndicator, Platform } from 'react-native';
+import React, { useState, useRef, useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, Alert, ActivityIndicator, Platform, InteractionManager } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useStripe } from '@stripe/stripe-react-native';
 import { Colors } from '@/constants/colors';
 import { LinearGradient } from 'expo-linear-gradient';
 import userService from '@/services/user.service';
-import paymentService from '@/services/payment.service';
-import { useAuthStore } from '@/store/authStore';
+
+const PRESETS = ['500', '1000', '2000', '5000'];
 
 export default function TopUpScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { initPaymentSheet, presentPaymentSheet } = useStripe();
   const [amount, setAmount] = useState('1000');
-  const [selectedMethod, setSelectedMethod] = useState<string | null>(null);
+  const [customMode, setCustomMode] = useState(false);
+  const [customValue, setCustomValue] = useState('');
   const [loading, setLoading] = useState(false);
-  const [proofInput, setProofInput] = useState('');
+  const customInputRef = useRef<TextInput>(null);
 
-  const METHODS = [
-    { id: 'stripe', label: 'Debit / Credit Card', icon: 'credit-card', color: '#0EA5E9', bg: '#F0F9FF' },
-    { id: 'jazzcash', label: 'JazzCash', icon: 'smartphone', color: '#DB2777', bg: '#FDF2F8' },
-    { id: 'easypaisa', label: 'Easypaisa', icon: 'smartphone', color: '#059669', bg: '#ECFDF5' },
-    { id: 'bank_transfer', label: 'Bank Transfer', icon: 'home', color: '#0F766E', bg: '#F0FDFA' },
-  ];
+  useEffect(() => {
+    if (customMode) {
+      const task = InteractionManager.runAfterInteractions(() => {
+        customInputRef.current?.focus();
+      });
+      return () => task.cancel();
+    }
+  }, [customMode]);
 
   const showErr = (msg: string) => {
     if (Platform.OS === 'web') window.alert(msg);
     else Alert.alert('Error', msg);
   };
-  const showOk = (title: string, msg: string, onClose?: () => void) => {
-    if (Platform.OS === 'web') { window.alert(`${title}: ${msg}`); onClose?.(); }
-    else Alert.alert(title, msg, onClose ? [{ text: 'OK', onPress: onClose }] : undefined);
-  };
 
-  const handleStripeTopup = async (numAmount: number) => {
-    const userName = useAuthStore.getState().user?.name ?? 'Customer';
-    const { clientSecret, publishableKey } = await paymentService.createStripeTopupIntent(numAmount);
-
-    if (!publishableKey || publishableKey.includes('REPLACE_ME')) {
-      showErr('Card payments are not configured yet. Please choose another method.');
-      return;
-    }
-
-    const { error: initError } = await initPaymentSheet({
-      paymentIntentClientSecret: clientSecret,
-      merchantDisplayName: 'Digital Kisan',
-      defaultBillingDetails: { name: userName },
-      allowsDelayedPaymentMethods: false,
-    });
-    if (initError) throw new Error(initError.message);
-
-    const { error: presentError } = await presentPaymentSheet();
-    if (presentError) {
-      if (presentError.code === 'Canceled') return; // user dismissed sheet — silent
-      throw new Error(presentError.message);
-    }
-
-    // Webhook credits the wallet asynchronously. Give it a moment, then return.
-    showOk(
-      'Payment Successful',
-      `₨ ${numAmount.toLocaleString()} will appear in your wallet within a few seconds.`,
-      () => router.back()
-    );
-  };
-
-  const handleManualTopup = async (numAmount: number, method: string) => {
-    if (proofInput.trim().length < 4) {
-      showErr('Please enter your transaction reference / TX ID from the payment app or bank slip.');
-      return;
-    }
-    await userService.topupWallet(numAmount, method, proofInput.trim());
-    showOk(
-      'Request Submitted',
-      `Your top-up of ₨ ${numAmount.toLocaleString()} is pending admin approval. You'll see the funds in your wallet shortly.`,
-      () => router.back()
-    );
-  };
-
-  const handleTopUp = async () => {
+  const handleAddMoney = async () => {
     const numAmount = parseFloat(amount);
     if (isNaN(numAmount) || numAmount < 100) {
       showErr('Minimum top-up amount is ₨ 100.');
       return;
     }
-    if (!selectedMethod) {
-      showErr('Please select a payment method to proceed.');
-      return;
-    }
 
     setLoading(true);
     try {
-      if (selectedMethod === 'stripe') {
-        await handleStripeTopup(numAmount);
+      await userService.topupWallet(numAmount, 'direct');
+      if (Platform.OS === 'web') {
+        window.alert(`₨ ${numAmount.toLocaleString()} has been added to your wallet.`);
+        router.back();
       } else {
-        await handleManualTopup(numAmount, selectedMethod);
+        Alert.alert(
+          'Money Added!',
+          `₨ ${numAmount.toLocaleString()} has been added to your wallet.`,
+          [{ text: 'Done', onPress: () => router.back() }]
+        );
       }
     } catch (error: any) {
       const msg = error?.response?.data?.message ?? error?.message ?? 'Failed to add money. Please try again.';
@@ -104,8 +59,6 @@ export default function TopUpScreen() {
       setLoading(false);
     }
   };
-
-  const isManual = selectedMethod && selectedMethod !== 'stripe';
 
   return (
     <View style={styles.container}>
@@ -116,108 +69,123 @@ export default function TopUpScreen() {
         <Text style={styles.headerTitle}>Add Money</Text>
       </View>
 
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+        {/* Amount Card */}
         <View style={styles.card}>
-          <LinearGradient
-            colors={[Colors.agri.sabz, '#059669']}
-            style={styles.balanceCard}
-          >
+          <LinearGradient colors={[Colors.agri.sabz, '#059669']} style={styles.balanceCard}>
             <View style={styles.cardInfo}>
-               <View>
-                 <Text style={styles.balanceLabel}>DigitalKisan Wallet</Text>
-                 <Text style={styles.balanceSub}>Enter amount to top up</Text>
-               </View>
-               <Feather name="shield" size={24} color="rgba(255,255,255,0.4)" />
+              <View>
+                <Text style={styles.balanceLabel}>DigitalKisan Wallet</Text>
+                <Text style={styles.balanceSub}>Amount to add</Text>
+              </View>
+              <Feather name="shield" size={24} color="rgba(255,255,255,0.4)" />
             </View>
             <View style={styles.inputRow}>
               <Text style={styles.currencySymbol}>₨</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="0.00"
-                placeholderTextColor="rgba(255,255,255,0.5)"
-                keyboardType="numeric"
-                value={amount}
-                onChangeText={setAmount}
-              />
+              <Text style={styles.amountDisplay}>
+                {amount ? parseFloat(amount).toLocaleString() : '0'}
+              </Text>
             </View>
           </LinearGradient>
 
+          {/* Preset Pills */}
           <View style={styles.quickAmounts}>
-            {[1000, 2000, 5000, 10000].map((val) => (
-              <TouchableOpacity 
-                key={val} 
-                style={[styles.amountPill, amount === val.toString() && styles.amountPillActive]}
-                onPress={() => setAmount(val.toString())}
+            {PRESETS.map((val) => (
+              <TouchableOpacity
+                key={val}
+                style={[styles.amountPill, !customMode && amount === val && styles.amountPillActive]}
+                onPress={() => { setAmount(val); setCustomMode(false); setCustomValue(''); }}
               >
-                <Text style={[styles.amountPillText, amount === val.toString() && styles.amountPillTextActive]}>+₨ {val.toLocaleString()}</Text>
+                <Text style={[styles.amountPillText, !customMode && amount === val && styles.amountPillTextActive]}>
+                  +₨ {parseInt(val).toLocaleString()}
+                </Text>
               </TouchableOpacity>
+            ))}
+            <TouchableOpacity
+              style={[styles.amountPill, styles.customPill, customMode && styles.amountPillActive]}
+              onPress={() => { setCustomMode(true); setCustomValue(''); setAmount(''); }}
+            >
+              <Feather name="edit-2" size={11} color={customMode ? Colors.agri.sabz : '#475569'} style={{ marginRight: 4 }} />
+              <Text style={[styles.amountPillText, customMode && styles.amountPillTextActive]}>Custom</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Custom Input Box */}
+          {customMode && (
+            <View style={styles.customBox}>
+              <Text style={styles.customBoxLabel}>Enter Custom Amount</Text>
+              <View style={styles.customInputRow}>
+                <View style={styles.customCurrencyBox}>
+                  <Text style={styles.customCurrency}>₨</Text>
+                </View>
+                <TextInput
+                  ref={customInputRef}
+                  style={styles.customInput}
+                  placeholder="e.g. 3500"
+                  placeholderTextColor="#CBD5E1"
+                  keyboardType="numeric"
+                  value={customValue}
+                  onChangeText={(text) => {
+                    const clean = text.replace(/[^0-9]/g, '');
+                    setCustomValue(clean);
+                    setAmount(clean);
+                  }}
+                  returnKeyType="done"
+                />
+                {customValue.length > 0 && (
+                  <TouchableOpacity onPress={() => { setCustomValue(''); setAmount(''); }} style={styles.customClear}>
+                    <Feather name="x" size={14} color="#94A3B8" />
+                  </TouchableOpacity>
+                )}
+              </View>
+              <Text style={styles.customHint}>Minimum ₨ 100</Text>
+            </View>
+          )}
+        </View>
+
+        {/* Instant Credit Info */}
+        <View style={styles.infoCard}>
+          <View style={styles.infoIconWrap}>
+            <Feather name="zap" size={18} color="#059669" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.infoTitle}>Instant Credit</Text>
+            <Text style={styles.infoDesc}>Funds are added to your wallet immediately and can be used to place orders right away.</Text>
+          </View>
+        </View>
+
+        {/* Banking Coming Soon */}
+        <View style={styles.comingSoonCard}>
+          <View style={styles.comingSoonHeader}>
+            <Feather name="clock" size={16} color="#6366F1" />
+            <Text style={styles.comingSoonTitle}>Banking Methods — Coming Soon</Text>
+          </View>
+          <Text style={styles.comingSoonDesc}>
+            We're working on integrating JazzCash, Easypaisa, and Bank Transfer. Stay tuned!
+          </Text>
+          <View style={styles.comingSoonBadges}>
+            {['JazzCash', 'Easypaisa', 'Bank Transfer'].map((name) => (
+              <View key={name} style={styles.comingSoonBadge}>
+                <Text style={styles.comingSoonBadgeText}>{name}</Text>
+              </View>
             ))}
           </View>
         </View>
-
-        <View style={styles.paymentMethods}>
-          <Text style={styles.sectionTitle}>Select Payment Method</Text>
-          {METHODS.map((method) => (
-            <TouchableOpacity
-              key={method.id}
-              style={[styles.methodRow, selectedMethod === method.id && styles.methodRowActive]}
-              activeOpacity={0.7}
-              onPress={() => { setSelectedMethod(method.id); setProofInput(''); }}
-            >
-              <View style={[styles.methodIcon, { backgroundColor: method.bg }]}>
-                <Feather name={method.icon as any} size={20} color={method.color} />
-              </View>
-              <Text style={styles.methodLabel}>{method.label}</Text>
-              <View style={[styles.radioCircle, selectedMethod === method.id && styles.radioActive]}>
-                {selectedMethod === method.id && <View style={styles.radioInner} />}
-              </View>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        {isManual && (
-          <View style={styles.proofCard}>
-            <Text style={styles.proofTitle}>One more step</Text>
-            <Text style={styles.proofHint}>
-              {selectedMethod === 'bank_transfer'
-                ? 'Transfer the amount to our bank account and enter the bank reference / TX ID below. Admin will verify and credit your wallet.'
-                : 'Send the amount from your mobile wallet to our merchant number and enter the TX ID below. Admin will verify and credit your wallet.'}
-            </Text>
-            <Text style={styles.proofLabel}>Transaction Reference / TX ID</Text>
-            <TextInput
-              value={proofInput}
-              onChangeText={setProofInput}
-              placeholder="e.g. JC1234567 or BANK-REF-89231"
-              placeholderTextColor="#94A3B8"
-              style={styles.proofInput}
-              autoCapitalize="characters"
-            />
-          </View>
-        )}
-
-        {selectedMethod === 'stripe' && (
-          <View style={styles.stripeNoteCard}>
-            <Feather name="shield" size={16} color={Colors.primary} />
-            <Text style={styles.stripeNote}>
-              You'll be redirected to a secure Stripe payment sheet. Funds appear in your
-              wallet automatically once payment is confirmed.
-            </Text>
-          </View>
-        )}
       </ScrollView>
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
-        <TouchableOpacity 
-          style={[styles.payBtn, (!amount || !selectedMethod) && { opacity: 0.6 }]} 
-          onPress={handleTopUp}
-          disabled={!amount || !selectedMethod || loading}
+        <TouchableOpacity
+          style={[styles.payBtn, (!amount || loading) && { opacity: 0.6 }]}
+          onPress={handleAddMoney}
+          disabled={!amount || loading}
+          activeOpacity={0.8}
         >
           {loading ? (
             <ActivityIndicator color="#fff" />
           ) : (
             <>
-              <Text style={styles.payBtnText}>Proceed to Payment</Text>
-              <Feather name="arrow-right" size={18} color="#fff" style={{ marginLeft: 8 }} />
+              <Feather name="plus-circle" size={20} color="#fff" style={{ marginRight: 10 }} />
+              <Text style={styles.payBtnText}>Add ₨ {amount ? parseFloat(amount).toLocaleString() : '0'} to Wallet</Text>
             </>
           )}
         </TouchableOpacity>
@@ -238,57 +206,86 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center', marginRight: 16,
   },
   headerTitle: { fontSize: 18, fontWeight: '900', color: Colors.textPrimary },
+
   content: { padding: 24, paddingBottom: 120 },
-  card: { backgroundColor: '#fff', borderRadius: 24, padding: 20, marginBottom: 24, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 10, elevation: 2 },
+
+  card: {
+    backgroundColor: '#fff', borderRadius: 24, padding: 20, marginBottom: 16,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 10, elevation: 2,
+  },
   balanceCard: { borderRadius: 20, padding: 24 },
   cardInfo: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 },
   balanceLabel: { color: 'rgba(255,255,255,0.8)', fontSize: 13, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1 },
   balanceSub: { color: 'rgba(255,255,255,0.6)', fontSize: 11, fontWeight: '600' },
   inputRow: { flexDirection: 'row', alignItems: 'center' },
   currencySymbol: { color: '#fff', fontSize: 24, fontWeight: '900', marginRight: 8 },
-  input: { color: '#fff', fontSize: 36, fontWeight: '900', flex: 1 },
+  amountDisplay: { color: '#fff', fontSize: 36, fontWeight: '900', flex: 1 },
+
   quickAmounts: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 20 },
   amountPill: {
-    backgroundColor: '#F1F5F9', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, borderWidth: 1, borderColor: 'transparent'
+    backgroundColor: '#F1F5F9', paddingHorizontal: 12, paddingVertical: 8,
+    borderRadius: 12, borderWidth: 1, borderColor: 'transparent',
   },
-  amountPillActive: {
-    backgroundColor: '#ECFDF5', borderColor: Colors.agri.sabz
-  },
+  amountPillActive: { backgroundColor: '#ECFDF5', borderColor: Colors.agri.sabz },
   amountPillText: { fontSize: 12, fontWeight: '700', color: '#475569' },
   amountPillTextActive: { color: Colors.agri.sabz },
-  paymentMethods: { gap: 12 },
-  sectionTitle: { fontSize: 11, fontWeight: '800', color: '#94A3B8', textTransform: 'uppercase', marginBottom: 8, letterSpacing: 1, paddingHorizontal: 4 },
-  methodRow: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', padding: 16, borderRadius: 20, gap: 12, borderWidth: 1, borderColor: '#F1F5F9'
+  customPill: { flexDirection: 'row', alignItems: 'center' },
+
+  customBox: {
+    marginTop: 16, backgroundColor: '#F8FAFB', borderRadius: 16,
+    borderWidth: 1.5, borderColor: Colors.agri.sabz, overflow: 'hidden',
   },
-  methodRowActive: { borderColor: Colors.agri.sabz, backgroundColor: '#FAFEFB' },
-  methodIcon: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  methodLabel: { flex: 1, fontSize: 15, fontWeight: '700', color: '#1E293B' },
-  radioCircle: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: '#E2E8F0', alignItems: 'center', justifyContent: 'center' },
-  radioActive: { borderColor: Colors.agri.sabz },
-  radioInner: { width: 10, height: 10, borderRadius: 5, backgroundColor: Colors.agri.sabz },
-  footer: { padding: 24, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#F1F5F9', position: 'absolute', bottom: 0, left: 0, right: 0 },
+  customBoxLabel: {
+    fontSize: 10, fontWeight: '800', color: Colors.agri.sabz,
+    textTransform: 'uppercase', letterSpacing: 1,
+    paddingHorizontal: 16, paddingTop: 12, paddingBottom: 6,
+  },
+  customInputRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingBottom: 12, gap: 8 },
+  customCurrencyBox: {
+    width: 40, height: 48, borderRadius: 12, backgroundColor: '#ECFDF5',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  customCurrency: { fontSize: 18, fontWeight: '900', color: Colors.agri.sabz },
+  customInput: { flex: 1, height: 48, fontSize: 22, fontWeight: '900', color: '#1E293B', paddingHorizontal: 8 },
+  customClear: {
+    width: 28, height: 28, borderRadius: 14, backgroundColor: '#F1F5F9',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  customHint: { fontSize: 10, fontWeight: '700', color: '#94A3B8', paddingHorizontal: 16, paddingBottom: 10 },
+
+  infoCard: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 12,
+    backgroundColor: '#ECFDF5', borderRadius: 16, padding: 16,
+    borderWidth: 1, borderColor: '#A7F3D0', marginBottom: 16,
+  },
+  infoIconWrap: {
+    width: 36, height: 36, borderRadius: 10, backgroundColor: '#D1FAE5',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  infoTitle: { fontSize: 13, fontWeight: '800', color: '#065F46', marginBottom: 4 },
+  infoDesc: { fontSize: 12, color: '#047857', fontWeight: '500', lineHeight: 18 },
+
+  comingSoonCard: {
+    backgroundColor: '#F5F3FF', borderRadius: 16, padding: 16,
+    borderWidth: 1, borderColor: '#DDD6FE',
+  },
+  comingSoonHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
+  comingSoonTitle: { fontSize: 13, fontWeight: '800', color: '#4338CA' },
+  comingSoonDesc: { fontSize: 12, color: '#6366F1', fontWeight: '500', lineHeight: 18, marginBottom: 12 },
+  comingSoonBadges: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  comingSoonBadge: {
+    backgroundColor: '#EDE9FE', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5,
+  },
+  comingSoonBadgeText: { fontSize: 11, fontWeight: '700', color: '#5B21B6' },
+
+  footer: {
+    padding: 24, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#F1F5F9',
+    position: 'absolute', bottom: 0, left: 0, right: 0,
+  },
   payBtn: {
-    backgroundColor: Colors.agri.sabz, height: 60, borderRadius: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', shadowColor: Colors.agri.sabz, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 10, elevation: 4
+    backgroundColor: Colors.agri.sabz, height: 60, borderRadius: 18,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    shadowColor: Colors.agri.sabz, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 10, elevation: 4,
   },
   payBtnText: { color: '#fff', fontSize: 16, fontWeight: '900' },
-
-  proofCard: {
-    marginTop: 16, backgroundColor: '#fff', borderRadius: 20, padding: 18,
-    borderWidth: 1, borderColor: '#F1F5F9', gap: 10,
-  },
-  proofTitle: { fontSize: 13, fontWeight: '900', color: Colors.textPrimary, textTransform: 'uppercase', letterSpacing: 0.5 },
-  proofHint: { fontSize: 12, color: Colors.textSecondary, lineHeight: 18, fontWeight: '500' },
-  proofLabel: { fontSize: 11, fontWeight: '800', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: 1, marginTop: 6 },
-  proofInput: {
-    backgroundColor: '#F8FAFB', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12,
-    borderWidth: 1, borderColor: '#E2E8F0',
-    fontSize: 14, fontWeight: '700', color: Colors.textPrimary, letterSpacing: 0.5,
-  },
-  stripeNoteCard: {
-    marginTop: 16, backgroundColor: '#ECFDF5', borderRadius: 20, padding: 16,
-    borderWidth: 1, borderColor: '#A7F3D0',
-    flexDirection: 'row', alignItems: 'flex-start',
-  },
-  stripeNote: { flex: 1, fontSize: 12, color: '#065F46', fontWeight: '600', lineHeight: 18, marginLeft: 8 },
 });

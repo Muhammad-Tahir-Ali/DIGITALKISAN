@@ -57,13 +57,23 @@ function PlaceBidModal({
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={() => {
+      setBidAmount('');
+      setEstimatedHours('');
+      setMessage('');
+      onClose();
+    }}>
       <View style={modal.backdrop}>
         <View style={modal.sheet}>
           <View style={modal.handle} />
           <View style={modal.header}>
             <Text style={modal.title}>Place Your Bid 💼</Text>
-            <TouchableOpacity onPress={onClose}>
+            <TouchableOpacity onPress={() => {
+              setBidAmount('');
+              setEstimatedHours('');
+              setMessage('');
+              onClose();
+            }}>
               <Feather name="x" size={22} color={Colors.textSecondary} />
             </TouchableOpacity>
           </View>

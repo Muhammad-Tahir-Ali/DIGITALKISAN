@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, StyleSheet, Dimensions, Alert, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useFocusEffect } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '@/constants/colors';
@@ -8,7 +9,6 @@ import { Button } from '@/components/ui';
 import { EscrowBadge } from '@/components/checkout/EscrowBadge';
 import { useCartStore } from '@/store/cartStore';
 import { LinearGradient } from 'expo-linear-gradient';
-import { GooglePlacesAutocomplete } from 'react-native-google-places-autocomplete';
 import orderService from '@/services/order.service';
 import userService from '@/services/user.service';
 
@@ -31,11 +31,14 @@ export default function CheckoutScreen() {
   const [walletBalance, setWalletBalance] = useState<number>(0);
   const [addressError, setAddressError] = useState<string | null>(null);
 
-  useEffect(() => {
-    userService.getWallet().then(data => {
-      setWalletBalance(data.availableBalance);
-    }).catch(() => setWalletBalance(0));
-  }, []);
+  // Refetch wallet every time this screen comes into focus (e.g. returning from topup)
+  useFocusEffect(
+    useCallback(() => {
+      userService.getWallet()
+        .then(data => setWalletBalance(data.availableBalance))
+        .catch(() => setWalletBalance(0));
+    }, [])
+  );
 
   // Load live cart data
   const items = useCartStore((s) => s.items);
@@ -162,69 +165,18 @@ export default function CheckoutScreen() {
           <View>
             <Text style={styles.stepTitle}>Delivery Address</Text>
 
-            <View style={[styles.addressInputWrap, addressError ? { borderColor: '#EF4444' } : undefined, { padding: 0, borderBottomWidth: 0, minHeight: 56, zIndex: 100 }]}>
-              <GooglePlacesAutocomplete
-                placeholder="Search for your delivery address..."
-                onPress={(data, details = null) => {
-                  setDeliveryAddress(data.description);
-                  setAddressError(null);
+            <View style={[styles.addressInputWrap, addressError ? { borderColor: '#EF4444' } : undefined]}>
+              <Feather name="map-pin" size={20} color={addressError ? '#EF4444' : Colors.agri.sabz} style={{ marginRight: 12 }} />
+              <TextInput
+                placeholder="Enter your delivery address..."
+                placeholderTextColor="#94A3B8"
+                style={styles.addressInput}
+                value={deliveryAddress}
+                onChangeText={(text) => {
+                  setDeliveryAddress(text);
+                  if (text.trim()) setAddressError(null);
                 }}
-                query={{
-                  key: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY,
-                  language: 'en',
-                  components: 'country:pk',
-                }}
-                styles={{
-                  container: { flex: 1 },
-                  textInputContainer: {
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    backgroundColor: '#fff',
-                    paddingHorizontal: 16,
-                    height: 56,
-                    borderRadius: 20,
-                  },
-                  textInput: {
-                    flex: 1,
-                    fontSize: 14,
-                    fontWeight: '600',
-                    color: '#1E293B',
-                    height: 56,
-                    padding: 0,
-                    margin: 0,
-                    backgroundColor: 'transparent',
-                  },
-                  listView: {
-                    backgroundColor: '#fff',
-                    borderTopWidth: 1,
-                    borderColor: '#F1F5F9',
-                    borderBottomLeftRadius: 20,
-                    borderBottomRightRadius: 20,
-                  },
-                  row: {
-                    padding: 16,
-                    height: 56,
-                    flexDirection: 'row',
-                  },
-                  description: {
-                    color: '#1E293B',
-                    fontSize: 13,
-                    fontWeight: '500',
-                  }
-                }}
-                renderLeftButton={() => (
-                  <Feather name="map-pin" size={20} color={addressError ? '#EF4444' : Colors.agri.sabz} style={{ marginRight: 12 }} />
-                )}
-                textInputProps={{
-                  placeholderTextColor: '#94A3B8',
-                  value: deliveryAddress,
-                  onChangeText: (text) => {
-                    setDeliveryAddress(text);
-                    if (text.trim()) setAddressError(null);
-                  }
-                }}
-                fetchDetails={false}
-                enablePoweredByContainer={false}
+                multiline
               />
             </View>
             {addressError ? (

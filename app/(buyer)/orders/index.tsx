@@ -187,7 +187,7 @@ export default function BuyerOrdersScreen() {
             const canCancel = item.status === 'pending' || item.status === 'paid';
             const canTrack  = item.status === 'in_transit';
             const isDelivered = item.status === 'delivered';
-            const canRate   = isDelivered && !(item as any).rating;
+            const canRate   = isDelivered; // rate screen handles pre-fill/disable if already rated
 
             return (
               <TouchableOpacity

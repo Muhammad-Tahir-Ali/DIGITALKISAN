@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Modal, TextInput,
-  ScrollView, ActivityIndicator,
+  ScrollView, ActivityIndicator, Alert,
 } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE, Region } from 'react-native-maps';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -74,7 +74,6 @@ export default function OrderTrackingScreen() {
       cleanup();
       socket.off('connect');
       socket.off('disconnect');
-      socketService.disconnect();
     };
   }, [order?._id, order?.status]);
 
@@ -93,10 +92,14 @@ export default function OrderTrackingScreen() {
     { key: 't5', label: 'Delivered', subtitle: 'Confirm delivery to release funds', icon: 'home' },
   ];
 
-  const handleConfirmDelivery = () => {
-    if (otpCode.length === 4) {
+  const handleConfirmDelivery = async () => {
+    if (otpCode.length !== 4) return;
+    try {
+      await orderService.updateStatus(id as string, 'delivered');
       setOtpVisible(false);
       router.replace('/(buyer)/orders' as any);
+    } catch (e: any) {
+      Alert.alert('Error', e?.response?.data?.message ?? 'Could not confirm delivery. Please try again.');
     }
   };
 

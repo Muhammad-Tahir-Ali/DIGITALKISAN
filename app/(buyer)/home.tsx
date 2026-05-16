@@ -103,15 +103,17 @@ export default function BuyerHome() {
           <Text className="text-xl font-black text-textPrimary tracking-tight">DigitalKisan</Text>
         </View>
         <View className="flex-row gap-3">
-          <TouchableOpacity 
-            className="w-10 h-10 rounded-full bg-primary/10 items-center justify-center border border-primary/20"
-            onPress={() => {
-              useAuthStore.getState().setRole('farmer');
-              router.replace('/(farmer)/dashboard');
-            }}
-          >
-            <Repeat size={18} color={Colors.primary} />
-          </TouchableOpacity>
+          {user?.role === 'farmer' && (
+            <TouchableOpacity
+              className="w-10 h-10 rounded-full bg-primary/10 items-center justify-center border border-primary/20"
+              onPress={() => {
+                useAuthStore.getState().setRole('farmer');
+                router.replace('/(farmer)/dashboard');
+              }}
+            >
+              <Repeat size={18} color={Colors.primary} />
+            </TouchableOpacity>
+          )}
           <TouchableOpacity className="w-10 h-10 rounded-full bg-gray-50 items-center justify-center border border-border">
             <Bell size={20} color={Colors.textPrimary} />
           </TouchableOpacity>

@@ -38,6 +38,13 @@ export interface WalletTransaction {
 }
 
 
+export interface VehicleInfo {
+  vehicleType?: 'motorcycle' | 'rickshaw' | 'van' | 'truck' | 'pickup';
+  plateNumber?: string;
+  capacity?: number;
+  model?: string;
+}
+
 export interface User {
   _id: string;
   name: string;
@@ -45,7 +52,8 @@ export interface User {
   phone: string;
   role: 'buyer' | 'farmer' | 'logistics' | 'admin';
   isVerified: boolean;
-  // ... any other user fields
+  isOnline?: boolean;
+  vehicleInfo?: VehicleInfo;
 }
 
 const userService = {
@@ -65,20 +73,9 @@ const userService = {
     },
 
     getWallet: async (): Promise<WalletData> => {
-        try {
-            const { data } = await api.get('/users/wallet');
-            return data.data;
-        } catch {
-      // Derive from stats if dedicated endpoint doesn't exist
-      const stats = await userService.getDashboardStats();
-      return {
-        availableBalance: stats.totalEarnings,
-        totalEarned: stats.totalEarnings,
-        inEscrow: 0,
-        totalSales: stats.completedOrdersCount,
-    };
-    }
-},
+        const { data } = await api.get('/users/wallet');
+        return data.data;
+    },
 
 getWalletHistory: async (): Promise<WalletTransaction[]> => {
     const { data } = await api.get('/users/wallet/history');
@@ -88,6 +85,24 @@ getWalletHistory: async (): Promise<WalletTransaction[]> => {
   updateMe: async (payload: { name?: string; phone?: string }): Promise<User> => {
     const { data } = await api.patch('/users/me', payload);
     return data.data.user;
+  },
+
+  /** Get full profile including vehicleInfo and isOnline */
+  getMyProfile: async (): Promise<User> => {
+    const { data } = await api.get('/users/profile');
+    return data.data.user;
+  },
+
+  /** Update vehicle info (logistics only) */
+  updateVehicleInfo: async (vehicleInfo: VehicleInfo): Promise<VehicleInfo> => {
+    const { data } = await api.patch('/users/vehicle', vehicleInfo);
+    return data.data.vehicleInfo;
+  },
+
+  /** Toggle online/offline status (logistics only) */
+  toggleOnlineStatus: async (): Promise<{ isOnline: boolean }> => {
+    const { data } = await api.patch('/users/toggle-status');
+    return data.data;
   },
 
   /**

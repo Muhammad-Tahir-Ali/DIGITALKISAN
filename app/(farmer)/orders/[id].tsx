@@ -1,9 +1,9 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View, Text, ScrollView, ActivityIndicator, TouchableOpacity,
   StyleSheet, Alert, Platform,
 } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { Colors } from '@/constants/colors';
 import orderService, { Order } from '@/services/order.service';
@@ -97,39 +97,60 @@ function BidCard({
   );
 }
 
+// ─── Status action config ─────────────────────────────────────────────────────
+const STATUS_ACTIONS: Record<string, { label: string; next: string; color: string; icon: string; confirm: string }[]> = {
+  paid: [
+    { label: 'Open for Bidding', next: 'bidding',    color: '#7C3AED', icon: 'truck',   confirm: 'Allow logistics partners to submit delivery bids for this order?' },
+    { label: 'Cancel Order',     next: 'cancelled',  color: '#DC2626', icon: 'x-circle', confirm: 'Are you sure you want to cancel this order? The buyer will be refunded.' },
+  ],
+  bidding: [
+    { label: 'Cancel Order',     next: 'cancelled',  color: '#DC2626', icon: 'x-circle', confirm: 'Are you sure you want to cancel this order? The buyer will be refunded.' },
+  ],
+  in_transit: [
+    { label: 'Mark as Delivered', next: 'delivered', color: '#059669', icon: 'check-circle', confirm: 'Confirm that this order has been delivered and release escrow to your wallet?' },
+    { label: 'Raise Dispute',     next: 'disputed',  color: '#D97706', icon: 'alert-triangle', confirm: 'Raise a dispute for this order? Our team will investigate.' },
+  ],
+};
+
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function FarmerOrderDetail() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
-  const [order, setOrder]   = useState<Order | null>(null);
-  const [bids, setBids]     = useState<Bid[]>([]);
+  const [order, setOrder]         = useState<Order | null>(null);
+  const [bids, setBids]           = useState<Bid[]>([]);
   const [loading, setLoading]     = useState(true);
   const [bidsLoading, setBidsLoading] = useState(false);
-  const [accepting, setAccepting]   = useState(false);
+  const [accepting, setAccepting] = useState(false);
+  const [updating, setUpdating]   = useState(false);
 
   const fetchOrder = useCallback(async () => {
     try {
       const data = await orderService.getById(id as string);
       setOrder(data);
-      // Auto-fetch bids if order is in bidding state
-      if (['bidding', 'in_transit', 'paid'].includes(data.status)) {
+      if (['paid', 'bidding', 'in_transit'].includes(data.status)) {
         setBidsLoading(true);
-        const bidData = await bidService.getForOrder(id as string);
-        // Sort: lowest price first (best for farmer = cheapest logistics)
-        bidData.sort((a, b) => a.bidAmount - b.bidAmount);
-        setBids(bidData);
-        setBidsLoading(false);
+        try {
+          const bidData = await bidService.getForOrder(id as string);
+          bidData.sort((a, b) => a.bidAmount - b.bidAmount);
+          setBids(bidData);
+        } catch (bidErr) {
+          console.error('Failed to fetch bids', bidErr);
+        } finally {
+          setBidsLoading(false);
+        }
       }
     } catch (err) {
-      console.error('Failed to fetch order/bids', err);
+      console.error('Failed to fetch order', err);
     } finally {
       setLoading(false);
     }
   }, [id]);
 
-  useEffect(() => { if (id) fetchOrder(); }, [id, fetchOrder]);
+  useFocusEffect(
+    useCallback(() => { if (id) fetchOrder(); }, [id, fetchOrder])
+  );
 
   const handleAcceptBid = async (bidId: string) => {
     Alert.alert(
@@ -156,6 +177,27 @@ export default function FarmerOrderDetail() {
     );
   };
 
+  const handleStatusUpdate = (action: typeof STATUS_ACTIONS[string][number]) => {
+    Alert.alert(action.label, action.confirm, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Confirm',
+        style: action.next === 'cancelled' || action.next === 'disputed' ? 'destructive' : 'default',
+        onPress: async () => {
+          setUpdating(true);
+          try {
+            await orderService.updateStatus(id as string, action.next as any);
+            await fetchOrder();
+          } catch (e: any) {
+            Alert.alert('Error', e?.response?.data?.message ?? 'Could not update order status.');
+          } finally {
+            setUpdating(false);
+          }
+        },
+      },
+    ]);
+  };
+
   if (loading) {
     return (
       <View style={styles.centered}>
@@ -178,6 +220,8 @@ export default function FarmerOrderDetail() {
   const hasBids      = bids.length > 0;
   const isBidding    = order.status === 'bidding';
 
+  const actions = order ? (STATUS_ACTIONS[order.status] ?? []) : [];
+
   return (
     <View style={{ flex: 1, backgroundColor: '#F8FAFB' }}>
       {/* Header */}
@@ -189,7 +233,7 @@ export default function FarmerOrderDetail() {
         <View style={{ width: 40 }} />
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.content, actions.length > 0 && { paddingBottom: actions.length * 60 + 32 }]}>
 
         {/* Order Info Card */}
         <View style={styles.card}>
@@ -318,6 +362,30 @@ export default function FarmerOrderDetail() {
         )}
 
       </ScrollView>
+
+      {/* ── Farmer Action Bar ── */}
+      {actions.length > 0 && (
+        <View style={[styles.actionBar, { paddingBottom: insets.bottom + 12 }]}>
+          {actions.map((action) => (
+            <TouchableOpacity
+              key={action.next}
+              style={[styles.actionBarBtn, { backgroundColor: action.color }, updating && { opacity: 0.6 }]}
+              onPress={() => handleStatusUpdate(action)}
+              disabled={updating}
+              activeOpacity={0.85}
+            >
+              {updating ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <Feather name={action.icon as any} size={16} color="#fff" />
+                  <Text style={styles.actionBarBtnText}>{action.label}</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
     </View>
   );
 }
@@ -433,4 +501,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12, paddingVertical: 8, alignSelf: 'flex-start',
   },
   rejectedText: { fontSize: 12, fontWeight: '800', color: '#DC2626' },
+
+  actionBar: {
+    position: 'absolute', bottom: 0, left: 0, right: 0,
+    backgroundColor: '#fff', paddingHorizontal: 16, paddingTop: 12,
+    borderTopWidth: 1, borderTopColor: '#F1F5F9', gap: 8,
+  },
+  actionBarBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 8, borderRadius: 14, paddingVertical: 14,
+  },
+  actionBarBtnText: { color: '#fff', fontSize: 15, fontWeight: '900' },
 });

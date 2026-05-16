@@ -23,10 +23,11 @@ export interface VerifyEmailPayload {
   code: string;
 }
 
-// Backend wraps response in: { status: 'success', token, data: { user } }
+// Backend wraps response in: { status: 'success', token, refreshToken, data: { user } }
 interface BackendAuthResponse {
   status: string;
   token: string;
+  refreshToken?: string;
   data: { user: User };
 }
 
@@ -42,7 +43,7 @@ export interface AuthResponse {
 
 const normalizeResponse = (res: BackendAuthResponse): AuthResponse => ({
   token: res.token,
-  refreshToken: res.token, // Backend currently returns one token; extend if refresh added
+  refreshToken: res.refreshToken ?? res.token,
   user: res.data.user,
 });
 

@@ -18,10 +18,14 @@ function TabIcon({ name, focused, color }: { name: any; focused: boolean; color:
 
 export default function LogisticsLayout() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const role = useAuthStore((s) => s.role);
+  const user = useAuthStore((s) => s.user);
 
   if (!isAuthenticated) {
     return <Redirect href="/" />;
   }
+  if (role !== 'logistics') return <Redirect href="/" />;
+  if (user && !user.isVerified) return <Redirect href="/(auth)/verify-email" />;
 
   return (
     <Tabs
@@ -86,6 +90,15 @@ export default function LogisticsLayout() {
       {/* Hide old dashboard */}
       <Tabs.Screen
         name="dashboard"
+        options={{ href: null }}
+      />
+      {/* Hidden screens navigated to from profile */}
+      <Tabs.Screen
+        name="bids"
+        options={{ href: null }}
+      />
+      <Tabs.Screen
+        name="vehicle"
         options={{ href: null }}
       />
     </Tabs>

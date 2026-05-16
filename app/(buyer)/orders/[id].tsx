@@ -26,15 +26,22 @@ export default function OrderDetailScreen() {
   const insets = useSafeAreaInsets();
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
 
-  React.useEffect(() => {
+  const fetchOrder = React.useCallback(() => {
     if (!id) { setLoading(false); return; }
+    setLoading(true);
+    setError(null);
     orderService.getById(id as string)
       .then(setOrder)
-      .catch(() => {})
+      .catch((e: any) => {
+        setError(e?.response?.data?.message ?? 'Failed to load order details');
+      })
       .finally(() => setLoading(false));
   }, [id]);
+
+  React.useEffect(() => { fetchOrder(); }, [fetchOrder]);
 
   const handleCancel = () => {
     if (!order) return;
@@ -67,6 +74,18 @@ export default function OrderDetailScreen() {
     const phone = order?.farmer?.phone;
     if (phone) Linking.openURL(`tel:${phone}`);
   };
+
+  if (error) {
+    return (
+      <View className="flex-1 bg-background justify-center items-center p-6">
+        <Feather name="wifi-off" size={48} color={Colors.error} />
+        <Text className="text-lg font-bold text-textPrimary mt-4 text-center">{error}</Text>
+        <TouchableOpacity onPress={fetchOrder} className="mt-6 bg-primary px-6 py-3 rounded-xl">
+          <Text className="text-white font-bold">Retry</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   if (loading) {
     return (

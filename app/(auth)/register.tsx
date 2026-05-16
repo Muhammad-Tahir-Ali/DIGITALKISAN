@@ -156,7 +156,7 @@ export default function RegisterScreen() {
         role: role as UserRole,
       });
 
-      if (responseData && responseData.devCode) {
+      if (__DEV__ && responseData && responseData.devCode) {
         const msg = `[DEV MODE] Your verification code is: ${responseData.devCode}`;
         if (Platform.OS === 'web') {
           window.alert(msg);
@@ -184,12 +184,17 @@ export default function RegisterScreen() {
 
 
   const pickImage = async (field: keyof RegisterForm) => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission needed', 'Please allow access to your photo library');
+      return;
+    }
+
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: false,
       quality: 0.7,
     });
-
 
     if (!result.canceled) {
       setValue(field, result.assets[0].uri);
