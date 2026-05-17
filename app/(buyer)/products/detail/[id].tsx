@@ -74,6 +74,7 @@ export default function ProductDetailScreen() {
       price:       product.pricePerUnit,
       quantity:    qty,
       unit:        product.unit,
+      image:       product.images?.[0],
       farmerId:    product.farmer?._id || '',
       farmerName:  product.farmer?.name || 'Farmer',
       maxStock:    product.availableQuantity,

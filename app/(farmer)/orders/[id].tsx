@@ -152,27 +152,35 @@ export default function FarmerOrderDetail() {
     useCallback(() => { if (id) fetchOrder(); }, [id, fetchOrder])
   );
 
-  const handleAcceptBid = async (bidId: string) => {
+  const doAcceptBid = async (bidId: string) => {
+    setAccepting(true);
+    try {
+      await bidService.accept(bidId);
+      Alert.alert('✅ Bid Accepted!', 'The logistics partner has been assigned. Order is now In Transit.');
+      fetchOrder();
+    } catch (e: any) {
+      const msg = e?.response?.data?.message ?? 'Could not accept bid.';
+      Alert.alert('Error', msg);
+      console.error('[AcceptBid]', e?.response?.status, msg);
+    } finally {
+      setAccepting(false);
+    }
+  };
+
+  const handleAcceptBid = (bidId: string) => {
+    if (Platform.OS === 'web') {
+      // window.confirm is synchronous — call doAcceptBid directly after confirmation
+      if ((window as any).confirm('Accept this bid?\n\nThe logistics partner will be assigned and other bids rejected.')) {
+        doAcceptBid(bidId);
+      }
+      return;
+    }
     Alert.alert(
       'Accept This Bid?',
       'The selected logistics partner will be assigned to deliver this order. Other bids will be rejected automatically.',
       [
         { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Accept Bid',
-          onPress: async () => {
-            setAccepting(true);
-            try {
-              await bidService.accept(bidId);
-              Alert.alert('✅ Bid Accepted!', 'The logistics partner has been assigned. Order is now In Transit.');
-              fetchOrder();
-            } catch (e: any) {
-              Alert.alert('Error', e?.response?.data?.message ?? 'Could not accept bid.');
-            } finally {
-              setAccepting(false);
-            }
-          },
-        },
+        { text: 'Accept Bid', onPress: () => doAcceptBid(bidId) },
       ]
     );
   };

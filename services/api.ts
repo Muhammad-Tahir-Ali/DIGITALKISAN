@@ -15,7 +15,7 @@ export const BASE_URL = process.env.EXPO_PUBLIC_API_URL || (__DEV__
 
 const api = axios.create({
   baseURL: BASE_URL,
-  timeout: 15000,
+  timeout: 35000,
   headers: {
     'Content-Type': 'application/json',
     Accept: 'application/json',
@@ -61,7 +61,15 @@ api.interceptors.response.use(
   async (error: AxiosError) => {
     const originalRequest = error.config as InternalAxiosRequestConfig & {
       _retry?: boolean;
+      _networkRetry?: boolean;
     };
+
+    // Render free-tier cold start: retry once after 5s on network errors
+    if (!error.response && originalRequest && !originalRequest._networkRetry) {
+      originalRequest._networkRetry = true;
+      await new Promise((r) => setTimeout(r, 5000));
+      return api(originalRequest);
+    }
 
     // Skip refresh logic for auth endpoints themselves (login, refresh).
     // If login returns 401, pass the real error (wrong credentials) straight through.

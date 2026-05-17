@@ -23,6 +23,9 @@ export function LazyImage({
   React.useEffect(() => {
     opacity.setValue(0);
     setErrored(false);
+    // Fallback: reveal image after 2s even if onLoad never fires (RN edge case)
+    const t = setTimeout(() => opacity.setValue(1), 2000);
+    return () => clearTimeout(t);
   }, [uri]);
 
   if (!uri || errored) {

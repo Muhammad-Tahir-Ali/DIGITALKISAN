@@ -25,6 +25,7 @@ export const ProductCard = React.memo(function ProductCard({ item }: Props) {
       price: item.pricePerUnit,
       quantity: 1,
       unit: item.unit,
+      image: item.images?.[0],
       farmerId: item.farmer?._id ?? '',
       farmerName: item.farmer?.name ?? 'Unknown',
       maxStock: item.availableQuantity,

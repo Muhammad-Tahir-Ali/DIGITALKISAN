@@ -1,7 +1,7 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   View, Text, TouchableOpacity, FlatList,
-  StyleSheet, Alert,
+  StyleSheet, Alert, Image,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
@@ -48,13 +48,23 @@ function EmptyCart() {
 const CartRow = React.memo(function CartRow({ item }: { item: CartItem }) {
   const updateQuantity = useCartStore(s => s.updateQuantity);
   const removeItem = useCartStore(s => s.removeItem);
+  const [imgError, setImgError] = useState(false);
   const subtotal = item.price * item.quantity;
 
   return (
     <View style={styles.row}>
       {/* Thumbnail */}
       <View style={styles.rowThumb}>
-        <Text style={styles.rowEmoji}>{getEmoji(item.name)}</Text>
+        {item.image && !imgError ? (
+          <Image
+            source={{ uri: item.image }}
+            style={styles.thumbImage}
+            resizeMode="cover"
+            onError={() => setImgError(true)}
+          />
+        ) : (
+          <Text style={styles.rowEmoji}>{getEmoji(item.name)}</Text>
+        )}
       </View>
 
       {/* Info */}
@@ -258,7 +268,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#F0FDF4',
     alignItems: 'center', justifyContent: 'center',
     marginRight: 14,
+    overflow: 'hidden',
   },
+  thumbImage: { width: 64, height: 64 },
   rowEmoji: { fontSize: 30 },
   rowInfo: { flex: 1 },
   rowTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 2 },
