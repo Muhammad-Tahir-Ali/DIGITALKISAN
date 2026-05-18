@@ -59,7 +59,8 @@
       "Bash(xargs grep -l \"classifyCrop\\\\|aiGrade\\\\|Grade\\\\|gemini\\\\|Gemini\")",
       "Bash(git log *)",
       "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\Muhammad Tahir\\\\Desktop\\\\DIGITAL KISAN\\\\backend\\\\src\\\\routes\" -Recurse -Filter \"*.ts\")",
-      "Bash(dir /s /b \"C:\\\\Users\\\\Muhammad Tahir\\\\Desktop\\\\DIGITAL KISAN\\\\admin\\\\src\")"
+      "Bash(dir /s /b \"C:\\\\Users\\\\Muhammad Tahir\\\\Desktop\\\\DIGITAL KISAN\\\\admin\\\\src\")",
+      "Bash(git commit *)"
     ]
   }
 }
