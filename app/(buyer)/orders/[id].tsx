@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Alert, Linking, Platform } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Alert, Linking, Platform, Image } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -248,6 +248,38 @@ export default function OrderDetailScreen() {
             </TouchableOpacity>
           </View>
         </View>
+
+        {/* ── DELIVERY PROOF ── */}
+        {order.deliveryProofs && order.deliveryProofs.length > 0 && (
+          <View className="bg-white rounded-2xl p-5 border border-gray-200 mb-6 shadow-sm">
+            <Text className="font-bold text-base text-textPrimary mb-4 border-b border-gray-100 pb-2">Delivery Photos</Text>
+            {order.deliveryProofs.map((proof, idx) => {
+              const isPickup = proof.status === 'picked_up';
+              return (
+                <View key={idx} className={idx < order.deliveryProofs!.length - 1 ? 'mb-4' : ''}>
+                  <View className="flex-row items-center gap-x-2 mb-2">
+                    <View className={`w-7 h-7 rounded-full items-center justify-center ${isPickup ? 'bg-amber-50' : 'bg-purple-50'}`}>
+                      <Text style={{ fontSize: 14 }}>{isPickup ? '📦' : '📍'}</Text>
+                    </View>
+                    <View>
+                      <Text className={`text-xs font-bold ${isPickup ? 'text-amber-700' : 'text-purple-700'}`}>
+                        {isPickup ? 'Pickup Proof' : 'Arrival Proof'}
+                      </Text>
+                      <Text className="text-[10px] text-textSecondary">
+                        {new Date(proof.capturedAt).toLocaleString('en-PK', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                      </Text>
+                    </View>
+                  </View>
+                  <Image
+                    source={{ uri: proof.imageData }}
+                    style={{ width: '100%', height: 180, borderRadius: 12 }}
+                    resizeMode="cover"
+                  />
+                </View>
+              );
+            })}
+          </View>
+        )}
 
         {/* ── PAYMENT ── */}
         <View className="bg-white rounded-2xl p-5 border border-gray-200 mb-6 shadow-sm">

@@ -227,6 +227,26 @@ function ProofModal({
   );
 }
 
+// ── Product Thumbnail ─────────────────────────────────────────────────────────
+function ProductThumb({ uri }: { uri?: string }) {
+  const [errored, setErrored] = useState(false);
+  if (uri && !errored) {
+    return (
+      <Image
+        source={{ uri }}
+        style={styles.productImage}
+        resizeMode="cover"
+        onError={() => setErrored(true)}
+      />
+    );
+  }
+  return (
+    <View style={styles.productEmoji}>
+      <Text style={{ fontSize: 24 }}>🌾</Text>
+    </View>
+  );
+}
+
 // ── Active Job Card ───────────────────────────────────────────────────────────
 function ActiveJobCard({
   order,
@@ -278,9 +298,7 @@ function ActiveJobCard({
 
       {/* Product */}
       <View style={styles.productRow}>
-        <View style={styles.productEmoji}>
-          <Text style={{ fontSize: 24 }}>🌾</Text>
-        </View>
+        <ProductThumb uri={order.product?.images?.[0]} />
         <View style={{ flex: 1 }}>
           <Text style={styles.productName}>{order.product?.title ?? 'Agricultural Product'}</Text>
           <Text style={styles.productMeta}>{order.quantity} units · ₨{order.totalPrice?.toLocaleString()}</Text>
@@ -661,6 +679,7 @@ const styles = StyleSheet.create({
 
   productRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 14 },
   productEmoji: { width: 44, height: 44, borderRadius: 12, backgroundColor: '#F0FDF4', alignItems: 'center', justifyContent: 'center' },
+  productImage: { width: 44, height: 44, borderRadius: 12 },
   productName: { fontSize: 14, fontWeight: '800', color: '#111827', marginBottom: 2 },
   productMeta: { fontSize: 12, color: Colors.textSecondary, fontWeight: '600' },
 

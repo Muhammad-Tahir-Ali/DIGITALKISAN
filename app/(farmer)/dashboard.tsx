@@ -3,6 +3,7 @@ import {
   View, Text, ScrollView, TouchableOpacity,
   StyleSheet, Dimensions, RefreshControl,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -35,7 +36,24 @@ export default function FarmerDashboard() {
   const [refreshing, setRefreshing] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
+  const CACHE_KEY = 'farmer_dashboard_cache';
+
   const fetchAll = React.useCallback(async (isRefresh = false) => {
+    if (!isRefresh) {
+      // Show cached data instantly while fresh data loads in the background
+      try {
+        const cached = await AsyncStorage.getItem(CACHE_KEY);
+        if (cached) {
+          const c = JSON.parse(cached);
+          setStats(c.stats);
+          setOrders(c.orders);
+          setNotifications(c.notifications);
+          setPendingAiCount(c.pendingAiCount ?? 0);
+          setLoading(false);
+        }
+      } catch { /* ignore cache errors */ }
+    }
+
     if (isRefresh) setRefreshing(true);
     setError(null);
     try {
@@ -50,8 +68,25 @@ export default function FarmerDashboard() {
 
       // Fetch pending AI count independently so it never blocks the main dashboard
       productService.getMyProducts()
-        .then(p => setPendingAiCount(p.filter(p => p.status === 'pending_ai').length))
-        .catch(() => {});
+        .then(products => {
+          const count = products.filter(p => p.status === 'pending_ai').length;
+          setPendingAiCount(count);
+          // Persist full snapshot for next cold open
+          AsyncStorage.setItem(CACHE_KEY, JSON.stringify({
+            stats: statsData,
+            orders: ordersData,
+            notifications: notifsData,
+            pendingAiCount: count,
+          })).catch(() => {});
+        })
+        .catch(() => {
+          AsyncStorage.setItem(CACHE_KEY, JSON.stringify({
+            stats: statsData,
+            orders: ordersData,
+            notifications: notifsData,
+            pendingAiCount: 0,
+          })).catch(() => {});
+        });
     } catch (e: any) {
       setError(e?.response?.data?.message ?? 'Failed to load dashboard. Pull down to retry.');
     } finally {

@@ -3,6 +3,7 @@ import {
   View, Text, FlatList, TouchableOpacity,
   StyleSheet, RefreshControl, Alert, Platform, ActivityIndicator, Image,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -78,15 +79,30 @@ export default function BuyerOrdersScreen() {
   const [error, setError]             = useState<string | null>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
 
+  const CACHE_KEY = 'buyer_orders_cache';
+
   const fetchOrders = useCallback(async (isRefresh = false, silent = false) => {
+    if (!silent && !isRefresh) {
+      // Load cache first for instant display, then fetch fresh data
+      try {
+        const cached = await AsyncStorage.getItem(CACHE_KEY);
+        if (cached) {
+          setOrders(JSON.parse(cached));
+          setLoading(false); // show cached immediately, spinner gone
+        }
+      } catch { /* ignore cache errors */ }
+    }
+
     if (!silent) {
       if (isRefresh) setRefreshing(true);
-      else setLoading(true);
+      // Only show full spinner when there's no cached data yet
+      else if (orders.length === 0) setLoading(true);
       setError(null);
     }
     try {
       const data = await orderService.getMyOrders();
       setOrders(data);
+      AsyncStorage.setItem(CACHE_KEY, JSON.stringify(data)).catch(() => {});
     } catch (e: any) {
       if (!silent) setError(e?.response?.data?.message ?? 'Failed to load orders');
     } finally {
@@ -95,7 +111,7 @@ export default function BuyerOrdersScreen() {
         setRefreshing(false);
       }
     }
-  }, []);
+  }, [orders.length]);
 
   useFocusEffect(
     useCallback(() => {
