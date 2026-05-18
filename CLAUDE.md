@@ -112,8 +112,37 @@ All API calls live in `services/*.service.ts`. Components never call `axios` or 
 
 ### Logistics Workflow — Fixes
 - **`app/(logistics)/earnings.tsx`** — "This Month" stat now shows delivery count (not inflated `order.totalPrice`). Avg/Delivery uses `wallet.totalEarned / totalDeliveries`. Header refresh button replaced a self-referential `router.push` to the same screen. Delivery cards label amounts as "Order Value" to clarify they are not the delivery fee.
-- **`app/(logistics)/jobs/index.tsx`** — Removed `Math.random()` distance that regenerated on every render. Stats row computes avg order value from live `jobs` data instead of hardcoded ₨450. Switched `useEffect` → `useFocusEffect` so the job list refreshes on tab revisit.
-- **`app/(logistics)/active.tsx`** — Removed `socketService.disconnect()` from GPS effect cleanup. The socket is a shared singleton; disconnecting it on tab leave broke buyer real-time tracking. Now only the location watcher is removed.
+- **`app/(logistics)/jobs/index.tsx`** — Removed `Math.random()` distance that regenerated on every render. Stats row computes avg order value from live `jobs` data instead of hardcoded ₨450. Switched `useEffect` → `useFocusEffect` so the job list refreshes on tab revisit. Added 30 s silent polling via `setInterval` inside `useFocusEffect`.
+- **`app/(logistics)/active.tsx`** — Removed `socketService.disconnect()` from GPS effect cleanup. The socket is a shared singleton; disconnecting it on tab leave broke buyer real-time tracking. Now only the location watcher is removed. Added `ProductThumb` component so each delivery card shows the actual product image (with `🌾` emoji fallback) instead of a hardcoded emoji.
+- **`app/(logistics)/map.tsx`** — Switched `useEffect` → `useFocusEffect` with 30 s silent polling. `BidSheet` updated to support editing an existing bid (pre-fills `bidAmount`, `estimatedDeliveryTime`, `message`; calls `bidService.update()` when an existing bid is found).
+
+### Logistics Bid Update (Edit Bid)
+- **`backend/src/controllers/bid.controller.js`** — Added `updateBid` (`PATCH /bids/:id`): ownership check, `pending` status guard, order must still be `paid`/`bidding`. Updates `bidAmount`, `estimatedDeliveryTime`, `message`.
+- **`backend/src/routes/bidDirect.routes.js`** — Added `PATCH /:id` → `updateBid` (restricted to logistics).
+- **`DigitalKisan/services/bid.service.ts`** — Added `update(bidId, payload)` method.
+- **`app/(logistics)/jobs/index.tsx`** — `PlaceBidModal` accepts `existingBid`; pre-fills fields and calls `update` vs `place`. `JobCard` shows green "Bid: ₨X" chip and "Edit Bid" button when user has already bid on that order.
+
+### Auto-Refresh & Caching
+- **Silent polling pattern:** All real-time screens pass a `silent` flag to suppress loading/error states during background refreshes. `useFocusEffect` + `setInterval(30 000)` starts polling when the tab is focused and clears the interval on blur.
+- **`app/(farmer)/orders/index.tsx`** — Added `silent` param; 30 s `setInterval` inside `useFocusEffect`.
+- **`app/(buyer)/orders/index.tsx`** — Replaced `useEffect` with `useFocusEffect`; added `buyer_orders_cache` AsyncStorage stale-while-revalidate (shows cached data instantly, then refreshes in background); 30 s silent polling.
+- **`app/(farmer)/dashboard.tsx`** — Added `farmer_dashboard_cache` AsyncStorage stale-while-revalidate; 30 s polling already present.
+
+### Backend Connectivity — Render-First with Local Fallback
+- **`DigitalKisan/services/api.ts`** — `BASE_URL` always starts as the Render URL. Response interceptor: first network failure → 5 s retry on Render; second failure → switches `baseURL` to local (`192.168.100.30:3000` on device, `localhost:3000` on web) via `_localFallback` flag. Ensures cold-start resilience without hardcoding local URLs in dev.
+
+### Orders List — Performance Fix
+- **`backend/src/controllers/order.controller.js` (`getMyOrders`)** — Removed `images` from product populate for buyers and farmers (Base64 URIs were hundreds of KB × 5 images × many orders). Logistics role still receives `images` (few active orders, needed for delivery cards). Removed `countDocuments` parallel query and pagination; returns up to 50 orders flat.
+
+### AI Grading — Model Fix
+- **`backend/src/services/ai.service.js`** — Changed model from `gemini-2.5-flash-lite` (invalid/unavailable) to stable `gemini-1.5-flash`. Removed `generationConfig.thinkingConfig` (not supported on this model). Error now surfaces actual message in the push notification: `"AI grading failed: <err.message>"`.
+
+### Checkout — Step Reset Fix
+- **`app/(buyer)/checkout.tsx`** — Added full state reset in `useFocusEffect` (step back to 1, clear address/note/payment). Expo Router caches screen state; without the reset, the second order placed in the same session started at step 3 (lock funds) instead of step 1.
+
+### Delivery Proof Photos
+- **`app/(buyer)/orders/[id].tsx`** — New "Delivery Photos" card (between Delivery Details and Payment) renders when `order.deliveryProofs` is non-empty. Each proof shows a label (Pickup Proof 📦 / Arrival Proof 📍), formatted timestamp, and full-width Base64 image. Section is hidden for orders with no proofs.
+- Proof images are stored as `deliveryProofs[]` on the `Order` model: `{ status, imageData (Base64), capturedAt }`. Captured by logistics in `app/(logistics)/active.tsx` via `ProofModal` (camera or gallery) when updating to `picked_up` or `reached`.
 
 ### Farmer Image Picker — Freeze Fix
 - **`app/(farmer)/products/add.tsx`** — Replaced `setTimeout(100ms)` with `InteractionManager.runAfterInteractions()` before calling `launchImageLibraryAsync`. The old approach raced against React's re-render of the loading spinner, tying up the JS bridge while the native gallery was initialising, which made the gallery appear frozen. Permissions are now requested upfront on all platforms (not Android-only) to prevent a mid-gallery iOS permission dialog.
