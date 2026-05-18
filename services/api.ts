@@ -34,7 +34,28 @@ api.interceptors.request.use(
 );
 
 // ---------------------------------------------------------------------------
-// Response interceptor — handle 401 with token refresh
+// Background Render recovery — after falling back to local, ping Render every
+// 30 s; switch back once it responds.
+// ---------------------------------------------------------------------------
+let renderRetryTimer: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleRenderRetry() {
+  if (renderRetryTimer) return;
+  renderRetryTimer = setTimeout(async () => {
+    renderRetryTimer = null;
+    try {
+      await axios.get(`${RENDER_URL}/health`, { timeout: 10000 });
+      // Render is back — restore it as the active backend
+      api.defaults.baseURL = RENDER_URL;
+    } catch {
+      // Still down — keep retrying as long as we are on local
+      if (api.defaults.baseURL === LOCAL_URL) scheduleRenderRetry();
+    }
+  }, 30000);
+}
+
+// ---------------------------------------------------------------------------
+// Response interceptor — network fallback + 401 token refresh
 // ---------------------------------------------------------------------------
 let isRefreshing = false;
 let failedQueue: Array<{
@@ -58,23 +79,17 @@ api.interceptors.response.use(
   async (error: AxiosError) => {
     const originalRequest = error.config as InternalAxiosRequestConfig & {
       _retry?: boolean;
-      _networkRetry?: boolean;
       _localFallback?: boolean;
     };
 
-    if (!error.response && originalRequest) {
-      // First network error: Render may be cold-starting — wait 5s and retry
-      if (!originalRequest._networkRetry) {
-        originalRequest._networkRetry = true;
-        await new Promise((r) => setTimeout(r, 5000));
-        return api(originalRequest);
-      }
-      // Render still unreachable after retry — fall back to local backend
-      if (!originalRequest._localFallback) {
-        originalRequest._localFallback = true;
-        originalRequest.baseURL = LOCAL_URL;
-        return api(originalRequest);
-      }
+    // No response = network error. Switch to local immediately, retry the
+    // failed request against local, then start background Render recovery.
+    if (!error.response && originalRequest && !originalRequest._localFallback) {
+      originalRequest._localFallback = true;
+      api.defaults.baseURL = LOCAL_URL;
+      originalRequest.baseURL = LOCAL_URL;
+      scheduleRenderRetry();
+      return api(originalRequest);
     }
 
     // Skip refresh logic for auth endpoints themselves (login, refresh).
@@ -104,7 +119,7 @@ api.interceptors.response.use(
 
         if (!refreshToken) throw new Error('No refresh token');
 
-        const res = await axios.post(`${BASE_URL}/auth/refresh`, { refreshToken });
+        const res = await axios.post(`${api.defaults.baseURL}/auth/refresh`, { refreshToken });
         const { token, refreshToken: newRefreshToken } = res.data;
 
         useAuthStore.getState().setTokens(token, newRefreshToken);

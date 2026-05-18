@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity,
   StyleSheet, RefreshControl, Alert, Platform, ActivityIndicator, Image,
@@ -79,29 +79,30 @@ export default function BuyerOrdersScreen() {
   const [error, setError]             = useState<string | null>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
 
-  const CACHE_KEY = 'buyer_orders_cache';
+  const CACHE_KEY = 'buyer_orders_cache_v2';
+  const hasDataRef = useRef(false);
 
   const fetchOrders = useCallback(async (isRefresh = false, silent = false) => {
     if (!silent && !isRefresh) {
-      // Load cache first for instant display, then fetch fresh data
       try {
         const cached = await AsyncStorage.getItem(CACHE_KEY);
         if (cached) {
           setOrders(JSON.parse(cached));
-          setLoading(false); // show cached immediately, spinner gone
+          setLoading(false);
+          hasDataRef.current = true;
         }
       } catch { /* ignore cache errors */ }
     }
 
     if (!silent) {
       if (isRefresh) setRefreshing(true);
-      // Only show full spinner when there's no cached data yet
-      else if (orders.length === 0) setLoading(true);
+      else if (!hasDataRef.current) setLoading(true);
       setError(null);
     }
     try {
       const data = await orderService.getMyOrders();
       setOrders(data);
+      hasDataRef.current = true;
       AsyncStorage.setItem(CACHE_KEY, JSON.stringify(data)).catch(() => {});
     } catch (e: any) {
       if (!silent) setError(e?.response?.data?.message ?? 'Failed to load orders');
@@ -111,7 +112,7 @@ export default function BuyerOrdersScreen() {
         setRefreshing(false);
       }
     }
-  }, [orders.length]);
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
