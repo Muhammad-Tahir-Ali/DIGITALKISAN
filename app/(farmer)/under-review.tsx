@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, Image,
-  StyleSheet, ActivityIndicator, Animated, Alert,
+  StyleSheet, ActivityIndicator, Animated, Alert, Platform,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
@@ -29,12 +29,12 @@ export default function UnderReviewScreen() {
   useEffect(() => {
     const pulse = Animated.loop(
       Animated.sequence([
-        Animated.timing(pulseAnim, { toValue: 1, duration: 900, useNativeDriver: true }),
-        Animated.timing(pulseAnim, { toValue: 0, duration: 900, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1, duration: 900, useNativeDriver: Platform.OS !== 'web' }),
+        Animated.timing(pulseAnim, { toValue: 0, duration: 900, useNativeDriver: Platform.OS !== 'web' }),
       ])
     );
     const spin = Animated.loop(
-      Animated.timing(rotateAnim, { toValue: 1, duration: 2000, useNativeDriver: true })
+      Animated.timing(rotateAnim, { toValue: 1, duration: 2000, useNativeDriver: Platform.OS !== 'web' })
     );
     pulse.start();
     spin.start();

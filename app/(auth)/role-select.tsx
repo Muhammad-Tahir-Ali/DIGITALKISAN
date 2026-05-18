@@ -41,16 +41,16 @@ export default function RoleSelectScreen() {
   useEffect(() => {
     Animated.sequence([
       Animated.parallel([
-        Animated.timing(opacityAnim, { toValue: 1, duration: 400, useNativeDriver: true }),
-        Animated.timing(headerAnim, { toValue: 1, duration: 400, useNativeDriver: true }),
+        Animated.timing(opacityAnim, { toValue: 1, duration: 400, useNativeDriver: Platform.OS !== 'web' }),
+        Animated.timing(headerAnim, { toValue: 1, duration: 400, useNativeDriver: Platform.OS !== 'web' }),
       ]),
       Animated.parallel([
-        Animated.spring(card1Anim, { toValue: 0, useNativeDriver: true, speed: 14 }),
-        Animated.timing(card1Opacity, { toValue: 1, duration: 300, useNativeDriver: true }),
+        Animated.spring(card1Anim, { toValue: 0, useNativeDriver: Platform.OS !== 'web', speed: 14 }),
+        Animated.timing(card1Opacity, { toValue: 1, duration: 300, useNativeDriver: Platform.OS !== 'web' }),
       ]),
       Animated.parallel([
-        Animated.spring(card2Anim, { toValue: 0, useNativeDriver: true, speed: 14 }),
-        Animated.timing(card2Opacity, { toValue: 1, duration: 300, useNativeDriver: true }),
+        Animated.spring(card2Anim, { toValue: 0, useNativeDriver: Platform.OS !== 'web', speed: 14 }),
+        Animated.timing(card2Opacity, { toValue: 1, duration: 300, useNativeDriver: Platform.OS !== 'web' }),
       ]),
     ]).start();
   }, []);

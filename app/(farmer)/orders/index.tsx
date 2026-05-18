@@ -15,6 +15,8 @@ const STATUS_CONFIG: Record<string, { label: string; bg: string; text: string; d
   paid:       { label: 'New Order',  bg: '#DCFCE7', text: '#065F46', dot: '#10B981' },
   bidding:    { label: 'Bidding',    bg: '#EDE9FE', text: '#5B21B6', dot: '#7C3AED' },
   in_transit: { label: 'In Transit', bg: '#DBEAFE', text: '#1E40AF', dot: '#3B82F6' },
+  picked_up:  { label: 'Picked Up',  bg: '#FEF3C7', text: '#92400E', dot: '#F59E0B' },
+  reached:    { label: 'Reached',    bg: '#EDE9FE', text: '#5B21B6', dot: '#8B5CF6' },
   delivered:  { label: 'Delivered',  bg: '#D1FAE5', text: '#065F46', dot: '#10B981' },
   disputed:   { label: 'Disputed',   bg: '#FEE2E2', text: '#991B1B', dot: '#EF4444' },
   cancelled:  { label: 'Cancelled',  bg: '#F1F5F9', text: '#475569', dot: '#94A3B8' },
@@ -23,9 +25,26 @@ const STATUS_CONFIG: Record<string, { label: string; bg: string; text: string; d
 type TabKey = 'new' | 'active' | 'done';
 const TABS: { key: TabKey; label: string; statuses: OrderStatus[] }[] = [
   { key: 'new',    label: 'New',     statuses: ['pending', 'paid', 'bidding'] },
-  { key: 'active', label: 'Active',  statuses: ['in_transit'] },
+  { key: 'active', label: 'Active',  statuses: ['in_transit', 'picked_up', 'reached'] },
   { key: 'done',   label: 'Done',    statuses: ['delivered', 'cancelled', 'disputed'] },
 ];
+
+function ProductThumb({ uri }: { uri?: string }) {
+  const [errored, setErrored] = useState(false);
+  if (uri && !errored) {
+    return (
+      <Image
+        source={{ uri }}
+        style={styles.productImage}
+        resizeMode="cover"
+        onError={() => setErrored(true)}
+      />
+    );
+  }
+  return (
+    <View style={styles.productEmoji}><Text style={{ fontSize: 24 }}>🌾</Text></View>
+  );
+}
 
 export default function FarmerOrdersScreen() {
   const router = useRouter();
@@ -36,22 +55,30 @@ export default function FarmerOrdersScreen() {
   const [error, setError]       = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabKey>('new');
 
-  const fetchOrders = useCallback(async (isRefresh = false) => {
-    if (isRefresh) setRefreshing(true); else setLoading(true);
-    setError(null);
+  const fetchOrders = useCallback(async (isRefresh = false, silent = false) => {
+    if (!silent) {
+      if (isRefresh) setRefreshing(true); else setLoading(true);
+      setError(null);
+    }
     try {
       const data = await orderService.getMyOrders();
       setOrders(data);
     } catch (e: any) {
-      setError(e?.response?.data?.message ?? 'Failed to load orders');
+      if (!silent) setError(e?.response?.data?.message ?? 'Failed to load orders');
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (!silent) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   }, []);
 
   useFocusEffect(
-    useCallback(() => { fetchOrders(); }, [fetchOrders])
+    useCallback(() => {
+      fetchOrders();
+      const interval = setInterval(() => fetchOrders(false, true), 30000);
+      return () => clearInterval(interval);
+    }, [fetchOrders])
   );
 
   const tabOrders = (tab: TabKey) =>
@@ -84,8 +111,8 @@ export default function FarmerOrdersScreen() {
 
   const renderItem = ({ item }: { item: Order }) => {
     const cfg = STATUS_CONFIG[item.status] ?? STATUS_CONFIG.pending;
-    const canAcceptBids = item.status === 'bidding';
-    const canMarkPickup = item.status === 'in_transit';
+    const canAcceptBids   = item.status === 'bidding';
+    const isActiveDelivery = ['in_transit', 'picked_up', 'reached'].includes(item.status);
 
     return (
       <TouchableOpacity
@@ -104,15 +131,7 @@ export default function FarmerOrdersScreen() {
 
         {/* Product row */}
         <View style={styles.productRow}>
-          {item.product?.images?.[0] ? (
-            <Image
-              source={{ uri: item.product.images[0] }}
-              style={styles.productImage}
-              resizeMode="cover"
-            />
-          ) : (
-            <View style={styles.productEmoji}><Text style={{ fontSize: 24 }}>🌾</Text></View>
-          )}
+          <ProductThumb uri={item.product?.images?.[0]} />
           <View style={{ flex: 1 }}>
             <Text style={styles.productName}>{item.product?.title ?? 'Product'}</Text>
             <Text style={styles.productMeta}>
@@ -140,11 +159,13 @@ export default function FarmerOrdersScreen() {
               <Text style={styles.acceptBtnText}>Review Bids</Text>
             </TouchableOpacity>
           )}
-          {canMarkPickup && (
-            <TouchableOpacity style={styles.transitBtn} onPress={() => handleUpdateStatus(item, 'delivered')}>
-              <Feather name="truck" size={14} color="#fff" />
-              <Text style={styles.acceptBtnText}>Mark Delivered</Text>
-            </TouchableOpacity>
+          {isActiveDelivery && (
+            <View style={styles.trackChip}>
+              <View style={styles.trackDot} />
+              <Text style={styles.trackChipText}>
+                {item.status === 'in_transit' ? 'In Transit' : item.status === 'picked_up' ? 'Picked Up' : 'Reached'}
+              </Text>
+            </View>
           )}
           <TouchableOpacity style={styles.detailBtn} onPress={() => router.push(`/(farmer)/orders/${item._id}` as any)}>
             <Text style={styles.detailBtnText}>Details</Text>
@@ -294,6 +315,12 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primaryLight, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10,
   },
   detailBtnText: { fontSize: 12, fontWeight: '800', color: Colors.primary },
+  trackChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: '#DBEAFE', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8,
+  },
+  trackDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#3B82F6' },
+  trackChipText: { fontSize: 11, fontWeight: '800', color: '#1E40AF' },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 60 },
   errorText: { color: Colors.error, fontWeight: '700', textAlign: 'center', marginBottom: 12 },
   retryBtn: { backgroundColor: Colors.primary, paddingHorizontal: 24, paddingVertical: 10, borderRadius: 12 },

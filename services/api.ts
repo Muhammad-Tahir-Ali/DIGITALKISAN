@@ -3,15 +3,12 @@ import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 import { useAuthStore } from '@/store/authStore';
 
-// Use your machine's LAN IP so physical Android devices on the same WiFi can reach the backend.
-// 10.0.2.2 only works inside the Android Emulator; localhost only works on web.
-const DEV_MACHINE_IP = '192.168.100.30';
+const RENDER_URL = 'https://digital-kisan-api.onrender.com/api/v1';
+const LOCAL_URL = Platform.OS === 'web'
+  ? 'http://localhost:3000/api/v1'
+  : 'http://192.168.100.30:3000/api/v1';
 
-export const BASE_URL = process.env.EXPO_PUBLIC_API_URL || (__DEV__
-  ? (Platform.OS === 'web'
-      ? 'http://localhost:3000/api/v1'
-      : `http://${DEV_MACHINE_IP}:3000/api/v1`)
-  : 'https://digital-kisan-api.onrender.com/api/v1');
+export const BASE_URL = process.env.EXPO_PUBLIC_API_URL || RENDER_URL;
 
 const api = axios.create({
   baseURL: BASE_URL,
@@ -62,13 +59,22 @@ api.interceptors.response.use(
     const originalRequest = error.config as InternalAxiosRequestConfig & {
       _retry?: boolean;
       _networkRetry?: boolean;
+      _localFallback?: boolean;
     };
 
-    // Render free-tier cold start: retry once after 5s on network errors
-    if (!error.response && originalRequest && !originalRequest._networkRetry) {
-      originalRequest._networkRetry = true;
-      await new Promise((r) => setTimeout(r, 5000));
-      return api(originalRequest);
+    if (!error.response && originalRequest) {
+      // First network error: Render may be cold-starting — wait 5s and retry
+      if (!originalRequest._networkRetry) {
+        originalRequest._networkRetry = true;
+        await new Promise((r) => setTimeout(r, 5000));
+        return api(originalRequest);
+      }
+      // Render still unreachable after retry — fall back to local backend
+      if (!originalRequest._localFallback) {
+        originalRequest._localFallback = true;
+        originalRequest.baseURL = LOCAL_URL;
+        return api(originalRequest);
+      }
     }
 
     // Skip refresh logic for auth endpoints themselves (login, refresh).

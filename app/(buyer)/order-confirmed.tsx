@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, ScrollView, Animated, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, Animated, TouchableOpacity, Platform } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -45,8 +45,8 @@ export default function OrderConfirmedScreen() {
 
   useEffect(() => {
     Animated.parallel([
-      Animated.spring(scaleValue, { toValue: 1, tension: 40, friction: 6, useNativeDriver: true }),
-      Animated.timing(opacityValue, { toValue: 1, duration: 500, useNativeDriver: true }),
+      Animated.spring(scaleValue, { toValue: 1, tension: 40, friction: 6, useNativeDriver: Platform.OS !== 'web' }),
+      Animated.timing(opacityValue, { toValue: 1, duration: 500, useNativeDriver: Platform.OS !== 'web' }),
     ]).start();
   }, []);
 

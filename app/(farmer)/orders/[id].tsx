@@ -1,15 +1,16 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View, Text, ScrollView, ActivityIndicator, TouchableOpacity,
-  StyleSheet, Alert, Platform,
+  StyleSheet, Alert, Platform, Image, Animated,
 } from 'react-native';
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { Colors } from '@/constants/colors';
-import orderService, { Order } from '@/services/order.service';
+import orderService, { Order, OrderStatus } from '@/services/order.service';
 import bidService, { Bid } from '@/services/bid.service';
 import { StatusBadge } from '@/components/ui';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { socketService } from '@/services/socket.service';
 
 // ─── Bid Card ─────────────────────────────────────────────────────────────────
 function BidCard({
@@ -100,16 +101,80 @@ function BidCard({
 // ─── Status action config ─────────────────────────────────────────────────────
 const STATUS_ACTIONS: Record<string, { label: string; next: string; color: string; icon: string; confirm: string }[]> = {
   paid: [
-    { label: 'Open for Bidding', next: 'bidding',    color: '#7C3AED', icon: 'truck',   confirm: 'Allow logistics partners to submit delivery bids for this order?' },
-    { label: 'Cancel Order',     next: 'cancelled',  color: '#DC2626', icon: 'x-circle', confirm: 'Are you sure you want to cancel this order? The buyer will be refunded.' },
+    { label: 'Open for Bidding', next: 'bidding',   color: '#7C3AED', icon: 'truck',          confirm: 'Allow logistics partners to submit delivery bids for this order?' },
+    { label: 'Cancel Order',     next: 'cancelled', color: '#DC2626', icon: 'x-circle',       confirm: 'Are you sure you want to cancel this order? The buyer will be refunded.' },
   ],
   bidding: [
-    { label: 'Cancel Order',     next: 'cancelled',  color: '#DC2626', icon: 'x-circle', confirm: 'Are you sure you want to cancel this order? The buyer will be refunded.' },
+    { label: 'Cancel Order',     next: 'cancelled', color: '#DC2626', icon: 'x-circle',       confirm: 'Are you sure you want to cancel this order? The buyer will be refunded.' },
   ],
+  // in_transit / picked_up: logistics handles transitions; farmer can only dispute
   in_transit: [
-    { label: 'Mark as Delivered', next: 'delivered', color: '#059669', icon: 'check-circle', confirm: 'Confirm that this order has been delivered and release escrow to your wallet?' },
-    { label: 'Raise Dispute',     next: 'disputed',  color: '#D97706', icon: 'alert-triangle', confirm: 'Raise a dispute for this order? Our team will investigate.' },
+    { label: 'Raise Dispute',    next: 'disputed',  color: '#D97706', icon: 'alert-triangle', confirm: 'Raise a dispute for this order? Our team will investigate.' },
   ],
+  picked_up: [
+    { label: 'Raise Dispute',    next: 'disputed',  color: '#D97706', icon: 'alert-triangle', confirm: 'Raise a dispute for this order? Our team will investigate.' },
+  ],
+  // Once rider has reached, farmer can also confirm delivery as a fallback
+  reached: [
+    { label: 'Confirm Delivery', next: 'delivered', color: '#059669', icon: 'check-circle',   confirm: 'Confirm delivery and release escrow to your wallet?' },
+    { label: 'Raise Dispute',    next: 'disputed',  color: '#D97706', icon: 'alert-triangle', confirm: 'Raise a dispute for this order? Our team will investigate.' },
+  ],
+};
+
+// ─── Delivery Progress Steps ──────────────────────────────────────────────────
+const DELIVERY_STEPS: { key: OrderStatus; label: string; icon: React.ComponentProps<typeof Feather>['name'] }[] = [
+  { key: 'in_transit', label: 'In Transit', icon: 'truck'        },
+  { key: 'picked_up',  label: 'Picked Up',  icon: 'package'      },
+  { key: 'reached',    label: 'Reached',    icon: 'map-pin'      },
+  { key: 'delivered',  label: 'Delivered',  icon: 'check-circle' },
+];
+
+const ACTIVE_DELIVERY: OrderStatus[] = ['in_transit', 'picked_up', 'reached', 'delivered'];
+
+function DeliveryTracker({ status }: { status: OrderStatus }) {
+  const current = DELIVERY_STEPS.findIndex(s => s.key === status);
+  return (
+    <View style={styles.trackerRow}>
+      {DELIVERY_STEPS.map((step, i) => {
+        const done   = i < current;
+        const active = i === current;
+        return (
+          <React.Fragment key={step.key}>
+            <View style={styles.trackerStep}>
+              <View style={[
+                styles.trackerCircle,
+                done ? styles.trackerDone : active ? styles.trackerActive : styles.trackerPending,
+              ]}>
+                <Feather
+                  name={done ? 'check' : step.icon}
+                  size={12}
+                  color={done ? '#fff' : active ? Colors.primary : '#CBD5E1'}
+                />
+              </View>
+              <Text style={[
+                styles.trackerLabel,
+                done   ? { color: '#059669' } :
+                active ? { color: Colors.primary } :
+                         { color: '#CBD5E1' },
+              ]} numberOfLines={1}>
+                {step.label}
+              </Text>
+            </View>
+            {i < DELIVERY_STEPS.length - 1 && (
+              <View style={[styles.trackerLine, done ? styles.trackerLineDone : undefined]} />
+            )}
+          </React.Fragment>
+        );
+      })}
+    </View>
+  );
+}
+
+// ─── Status notification banner ───────────────────────────────────────────────
+const STATUS_MESSAGES: Partial<Record<OrderStatus, { icon: string; text: string; bg: string; color: string }>> = {
+  picked_up: { icon: '📦', text: 'Rider has picked up your product!',        bg: '#FEF3C7', color: '#92400E' },
+  reached:   { icon: '📍', text: 'Rider has reached the delivery location!', bg: '#EDE9FE', color: '#5B21B6' },
+  delivered: { icon: '🎉', text: 'Delivered! Payment released to your wallet.', bg: '#D1FAE5', color: '#065F46' },
 };
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
@@ -124,6 +189,32 @@ export default function FarmerOrderDetail() {
   const [bidsLoading, setBidsLoading] = useState(false);
   const [accepting, setAccepting] = useState(false);
   const [updating, setUpdating]   = useState(false);
+  const [notification, setNotification] = useState<{ icon: string; text: string; bg: string; color: string } | null>(null);
+  const notifOpacity = useRef(new Animated.Value(0)).current;
+
+  // Auto-dismiss notification after 5 s
+  const showNotif = useCallback((notif: typeof notification) => {
+    setNotification(notif);
+    notifOpacity.setValue(0);
+    Animated.sequence([
+      Animated.timing(notifOpacity, { toValue: 1, duration: 300, useNativeDriver: Platform.OS !== 'web' }),
+      Animated.delay(4000),
+      Animated.timing(notifOpacity, { toValue: 0, duration: 400, useNativeDriver: Platform.OS !== 'web' }),
+    ]).start(() => setNotification(null));
+  }, [notifOpacity]);
+
+  // Socket: listen for live logistics status updates on this order
+  useEffect(() => {
+    if (!order || !ACTIVE_DELIVERY.includes(order.status)) return;
+    socketService.connect();
+    socketService.joinOrder(order._id);
+    const off = socketService.onOrderStatusUpdated(order._id, ({ status }) => {
+      setOrder(prev => prev ? { ...prev, status: status as OrderStatus } : prev);
+      const msg = STATUS_MESSAGES[status as OrderStatus];
+      if (msg) showNotif(msg);
+    });
+    return () => { off(); };
+  }, [order?._id, order?.status, showNotif]);
 
   const fetchOrder = useCallback(async () => {
     try {
@@ -241,7 +332,66 @@ export default function FarmerOrderDetail() {
         <View style={{ width: 40 }} />
       </View>
 
+      {/* ── Notification Banner ── */}
+      {notification && (
+        <Animated.View style={[styles.notifBanner, { backgroundColor: notification.bg, opacity: notifOpacity }]}>
+          <Text style={styles.notifIcon}>{notification.icon}</Text>
+          <Text style={[styles.notifText, { color: notification.color }]}>{notification.text}</Text>
+        </Animated.View>
+      )}
+
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.content, actions.length > 0 && { paddingBottom: actions.length * 60 + 32 }]}>
+
+        {/* ── Delivery Tracker (shown for all active delivery statuses) ── */}
+        {order && ACTIVE_DELIVERY.includes(order.status) && (
+          <View style={[styles.card, { borderColor: '#D1FAE5', borderWidth: 1.5 }]}>
+            <View style={styles.trackerHeader}>
+              <Text style={styles.sectionTitle}>
+                <Feather name="truck" size={15} color={Colors.primary} />{'  '}Delivery Tracking
+              </Text>
+              <View style={styles.liveChip}>
+                <View style={styles.liveDot} />
+                <Text style={styles.liveText}>LIVE</Text>
+              </View>
+            </View>
+            <DeliveryTracker status={order.status} />
+            {order.logisticsProvider && (
+              <View style={styles.riderRow}>
+                <View style={styles.riderAvatar}>
+                  <Feather name="user" size={14} color={Colors.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.riderName}>{(order.logisticsProvider as any).name ?? '—'}</Text>
+                  <Text style={styles.riderPhone}>{(order.logisticsProvider as any).phone ?? '—'}</Text>
+                </View>
+                <Feather name="truck" size={16} color={Colors.textSecondary} />
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* ── Delivery Proofs ── */}
+        {order?.deliveryProofs && order.deliveryProofs.length > 0 && (
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>
+              <Feather name="camera" size={15} color="#374151" />{'  '}Proof Photos
+            </Text>
+            <View style={styles.divider} />
+            {order.deliveryProofs.map((proof, i) => (
+              <View key={i} style={styles.proofItem}>
+                <View style={styles.proofMeta}>
+                  <View style={styles.proofBadge}>
+                    <Text style={styles.proofBadgeText}>{proof.status.replace('_', ' ').toUpperCase()}</Text>
+                  </View>
+                  <Text style={styles.proofTime}>
+                    {new Date(proof.capturedAt).toLocaleString('en-PK', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                  </Text>
+                </View>
+                <Image source={{ uri: proof.imageData }} style={styles.proofImage} resizeMode="cover" />
+              </View>
+            ))}
+          </View>
+        )}
 
         {/* Order Info Card */}
         <View style={styles.card}>
@@ -520,4 +670,43 @@ const styles = StyleSheet.create({
     gap: 8, borderRadius: 14, paddingVertical: 14,
   },
   actionBarBtnText: { color: '#fff', fontSize: 15, fontWeight: '900' },
+
+  // Notification banner
+  notifBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    marginHorizontal: 16, marginTop: 8, marginBottom: -4,
+    borderRadius: 14, padding: 14,
+    borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)',
+  },
+  notifIcon: { fontSize: 20 },
+  notifText: { fontSize: 13, fontWeight: '700', flex: 1, lineHeight: 18 },
+
+  // Delivery tracker card
+  trackerHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+  liveChip: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#D1FAE5', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 20 },
+  liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#059669' },
+  liveText: { fontSize: 10, fontWeight: '900', color: '#059669', letterSpacing: 0.5 },
+
+  trackerRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 16 },
+  trackerStep: { alignItems: 'center', gap: 4, minWidth: 56 },
+  trackerCircle: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
+  trackerDone:    { backgroundColor: '#059669' },
+  trackerActive:  { backgroundColor: Colors.primaryLight, borderWidth: 2, borderColor: Colors.primary },
+  trackerPending: { backgroundColor: '#F1F5F9' },
+  trackerLabel: { fontSize: 8, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.2, textAlign: 'center' },
+  trackerLine: { flex: 1, height: 2, backgroundColor: '#E5E7EB', marginTop: 14 },
+  trackerLineDone: { backgroundColor: '#059669' },
+
+  riderRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#F1F5F9', marginTop: 4 },
+  riderAvatar: { width: 34, height: 34, borderRadius: 10, backgroundColor: Colors.primaryLight, alignItems: 'center', justifyContent: 'center' },
+  riderName: { fontSize: 13, fontWeight: '800', color: '#111827' },
+  riderPhone: { fontSize: 11, color: Colors.textSecondary, fontWeight: '500' },
+
+  // Proof photos
+  proofItem: { marginBottom: 16 },
+  proofMeta: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
+  proofBadge: { backgroundColor: '#EDE9FE', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
+  proofBadgeText: { fontSize: 9, fontWeight: '900', color: '#5B21B6', letterSpacing: 0.5 },
+  proofTime: { fontSize: 11, color: Colors.textSecondary, fontWeight: '500' },
+  proofImage: { width: '100%', height: 180, borderRadius: 14 },
 });

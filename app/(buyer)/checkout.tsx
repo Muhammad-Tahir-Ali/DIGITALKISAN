@@ -31,9 +31,16 @@ export default function CheckoutScreen() {
   const [walletBalance, setWalletBalance] = useState<number>(0);
   const [addressError, setAddressError] = useState<string | null>(null);
 
-  // Refetch wallet every time this screen comes into focus (e.g. returning from topup)
+  // Reset form + refetch wallet every time this screen comes into focus.
+  // Expo Router caches screen instances, so without this reset the step stays
+  // at 3 when the user returns for a second order.
   useFocusEffect(
     useCallback(() => {
+      setStep(1);
+      setDeliveryAddress('');
+      setDeliveryNote('');
+      setSelectedPayment('wallet');
+      setAddressError(null);
       userService.getWallet()
         .then(data => setWalletBalance(data.availableBalance))
         .catch(() => setWalletBalance(0));

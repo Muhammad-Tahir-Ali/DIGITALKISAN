@@ -7,9 +7,17 @@ export type OrderStatus =
   | 'paid'
   | 'bidding'
   | 'in_transit'
+  | 'picked_up'
+  | 'reached'
   | 'delivered'
   | 'disputed'
   | 'cancelled';
+
+export interface DeliveryProof {
+  status: string;
+  imageData: string;
+  capturedAt: string;
+}
 
 export interface Order {
   _id: string;
@@ -22,6 +30,7 @@ export interface Order {
   totalPrice: number;
   shippingAddress: { address: string };
   status: OrderStatus;
+  deliveryProofs?: DeliveryProof[];
   createdAt: string;
 }
 
@@ -64,9 +73,12 @@ const orderService = {
   /**
    * Update order status (Farmer / Logistics only)
    * Triggers Escrow release automatically when status = 'delivered'
+   * proofImage required for 'picked_up' and 'reached' statuses
    */
-  updateStatus: async (orderId: string, status: OrderStatus): Promise<Order> => {
-    const { data } = await api.patch(`/orders/${orderId}/status`, { status });
+  updateStatus: async (orderId: string, status: OrderStatus, proofImage?: string): Promise<Order> => {
+    const body: Record<string, string> = { status };
+    if (proofImage) body.proofImage = proofImage;
+    const { data } = await api.patch(`/orders/${orderId}/status`, body);
     return data.data.order;
   },
 

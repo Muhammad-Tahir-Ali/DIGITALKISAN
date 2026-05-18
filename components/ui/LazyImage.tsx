@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Image, ImageProps, StyleSheet, Animated } from 'react-native';
+import { View, Image, ImageProps, StyleSheet, Animated, Platform } from 'react-native';
 
 interface LazyImageProps extends Omit<ImageProps, 'source' | 'style'> {
   uri?: string | null;
@@ -53,7 +53,7 @@ export function LazyImage({
             Animated.timing(opacity, {
               toValue: 1,
               duration: 200,
-              useNativeDriver: true,
+              useNativeDriver: Platform.OS !== 'web',
             }).start()
           }
           onError={() => setErrored(true)}

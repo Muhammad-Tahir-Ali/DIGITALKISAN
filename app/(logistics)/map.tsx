@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View, Text, StyleSheet, Platform, TouchableOpacity,
   ActivityIndicator, Alert, Modal, TextInput, ScrollView,
@@ -9,7 +10,7 @@ import * as Location from 'expo-location';
 import { Feather } from '@expo/vector-icons';
 import { Colors } from '@/constants/colors';
 import orderService, { Order } from '@/services/order.service';
-import bidService from '@/services/bid.service';
+import bidService, { Bid } from '@/services/bid.service';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width, height } = Dimensions.get('window');
@@ -25,18 +26,33 @@ const PAKISTAN_REGION = {
 // ─── Bid Bottom Sheet ─────────────────────────────────────────────────────────
 function BidSheet({
   order,
+  existingBid,
   onClose,
   onSuccess,
 }: {
   order: Order;
+  existingBid: Bid | null;
   onClose: () => void;
   onSuccess: () => void;
 }) {
+  const isEdit = !!existingBid;
   const [bidAmount, setBidAmount] = useState('');
   const [estimatedHours, setEstimatedHours] = useState('');
   const [message, setMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const insets = useSafeAreaInsets();
+
+  React.useEffect(() => {
+    if (existingBid) {
+      setBidAmount(String(existingBid.bidAmount));
+      setEstimatedHours(String(existingBid.estimatedDeliveryTime));
+      setMessage(existingBid.message ?? '');
+    } else {
+      setBidAmount('');
+      setEstimatedHours('');
+      setMessage('');
+    }
+  }, [existingBid]);
 
   const handleSubmit = async () => {
     const amount = parseFloat(bidAmount);
@@ -45,12 +61,17 @@ function BidSheet({
     if (!hours || hours <= 0) return Alert.alert('Invalid Time', 'Enter estimated delivery hours');
     setSubmitting(true);
     try {
-      await bidService.place(order._id, { bidAmount: amount, estimatedDeliveryTime: hours, message });
-      Alert.alert('Bid Placed! ✅', `Your bid of ₨${amount} has been submitted. The farmer will review all bids.`);
+      if (isEdit && existingBid) {
+        await bidService.update(existingBid._id, { bidAmount: amount, estimatedDeliveryTime: hours, message });
+        Alert.alert('Bid Updated! ✅', `Your bid has been updated to ₨${amount}.`);
+      } else {
+        await bidService.place(order._id, { bidAmount: amount, estimatedDeliveryTime: hours, message });
+        Alert.alert('Bid Placed! ✅', `Your bid of ₨${amount} has been submitted. The farmer will review all bids.`);
+      }
       onSuccess();
       onClose();
     } catch (e: any) {
-      Alert.alert('Bid Failed', e?.response?.data?.message ?? 'Could not place bid. Try again.');
+      Alert.alert(isEdit ? 'Update Failed' : 'Bid Failed', e?.response?.data?.message ?? 'Could not submit bid. Try again.');
     } finally {
       setSubmitting(false);
     }
@@ -65,7 +86,7 @@ function BidSheet({
 
       <View style={sheet.topRow}>
         <View>
-          <Text style={sheet.title}>Place Your Bid 💼</Text>
+          <Text style={sheet.title}>{isEdit ? 'Update Your Bid ✏️' : 'Place Your Bid 💼'}</Text>
           <Text style={sheet.subtitle}>#{order._id.slice(-6).toUpperCase()} · {order.product?.title}</Text>
         </View>
         <TouchableOpacity onPress={onClose} style={sheet.closeBtn}>
@@ -144,8 +165,8 @@ function BidSheet({
           <ActivityIndicator color="#fff" />
         ) : (
           <>
-            <Feather name="send" size={16} color="#fff" />
-            <Text style={sheet.submitText}>Submit Bid</Text>
+            <Feather name={isEdit ? 'edit-2' : 'send'} size={16} color="#fff" />
+            <Text style={sheet.submitText}>{isEdit ? 'Update Bid' : 'Submit Bid'}</Text>
           </>
         )}
       </TouchableOpacity>
@@ -165,7 +186,7 @@ function JobInfoCard({
 }) {
   const anim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    Animated.spring(anim, { toValue: 1, useNativeDriver: true, tension: 60 }).start();
+    Animated.spring(anim, { toValue: 1, useNativeDriver: Platform.OS !== 'web', tension: 60 }).start();
   }, []);
 
   return (
@@ -237,6 +258,7 @@ export default function LogisticsMap() {
   const insets = useSafeAreaInsets();
   const mapRef = useRef<MapView>(null);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [myBidMap, setMyBidMap] = useState<Record<string, Bid>>({});
   const [loading, setLoading] = useState(true);
   const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
@@ -259,18 +281,33 @@ export default function LogisticsMap() {
     })();
   }, []);
 
-  const fetchJobs = useCallback(async () => {
+  const fetchJobs = useCallback(async (silent = false) => {
     try {
-      const available = await orderService.getAvailableOrders();
+      const [available, myBids] = await Promise.all([
+        orderService.getAvailableOrders(),
+        bidService.getMyBids(),
+      ]);
       setOrders(available);
+      const map: Record<string, Bid> = {};
+      myBids.forEach(b => {
+        if (b.status === 'pending' && b.order) {
+          const orderId = typeof b.order === 'string' ? b.order : (b.order as any)._id;
+          map[orderId] = b as unknown as Bid;
+        }
+      });
+      setMyBidMap(map);
     } catch (e: any) {
-      console.warn('Map: Failed to fetch available orders', e?.message);
+      if (!silent) console.warn('Map: Failed to fetch available orders', e?.message);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
-  useEffect(() => { fetchJobs(); }, [fetchJobs]);
+  useFocusEffect(useCallback(() => {
+    fetchJobs();
+    const interval = setInterval(() => fetchJobs(true), 30000);
+    return () => clearInterval(interval);
+  }, [fetchJobs]));
 
   // Build a map marker coordinate for an order (farmer location or random fallback in Pakistan)
   const getPickupCoord = (order: Order) => {
@@ -442,6 +479,7 @@ export default function LogisticsMap() {
           {selectedOrder && (
             <BidSheet
               order={selectedOrder}
+              existingBid={myBidMap[selectedOrder._id] ?? null}
               onClose={() => setBidSheetVisible(false)}
               onSuccess={() => { fetchJobs(); setSelectedOrder(null); }}
             />

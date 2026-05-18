@@ -9,6 +9,7 @@ import {
   ViewStyle,
   TextStyle,
   Animated,
+  Platform,
 } from 'react-native';
 import { Colors, Semantic } from '@/constants/colors';
 import { FontSize, FontWeight, ComponentSize, Shadow } from '@/constants/theme';
@@ -123,10 +124,10 @@ export function Button({
   const { flex, margin, marginTop, marginBottom, marginLeft, marginRight, marginHorizontal, marginVertical, ...buttonStyle } = StyleSheet.flatten(style || {});
 
   const handlePressIn = () => {
-    Animated.spring(scaleAnim, { toValue: 0.97, useNativeDriver: true, speed: 30 }).start();
+    Animated.spring(scaleAnim, { toValue: 0.97, useNativeDriver: Platform.OS !== 'web', speed: 30 }).start();
   };
   const handlePressOut = () => {
-    Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, speed: 20 }).start();
+    Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: Platform.OS !== 'web', speed: 20 }).start();
   };
 
   return (

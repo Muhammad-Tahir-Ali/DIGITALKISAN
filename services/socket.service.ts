@@ -53,4 +53,16 @@ export const socketService = {
     socket?.on('driver_location', cb);
     return () => { socket?.off('driver_location', cb); };
   },
+
+  onOrderStatusUpdated(
+    orderId: string,
+    cb: (data: { orderId: string; status: string }) => void
+  ) {
+    if (!socket?.connected) this.connect();
+    const handler = (data: { orderId: string; status: string }) => {
+      if (data.orderId === orderId) cb(data);
+    };
+    socket?.on('order_status_updated', handler);
+    return () => { socket?.off('order_status_updated', handler); };
+  },
 };

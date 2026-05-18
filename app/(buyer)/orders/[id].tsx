@@ -118,16 +118,22 @@ export default function OrderDetailScreen() {
     );
   }
 
-  const isDelivered = order.status === 'delivered';
-  const isCancelled = order.status === 'cancelled';
-  const isPending   = order.status === 'pending';
-  const isPaid      = order.status === 'paid';
-  const isInTransit = order.status === 'in_transit';
+  const isDelivered       = order.status === 'delivered';
+  const isCancelled       = order.status === 'cancelled';
+  const isPending         = order.status === 'pending';
+  const isPaid            = order.status === 'paid';
+  const isActiveDelivery  = ['in_transit', 'picked_up', 'reached'].includes(order.status);
+
+  const DELIVERY_SUBTITLES: Record<string, string> = {
+    in_transit: 'Rider is on the way',
+    picked_up:  'Product picked up by rider',
+    reached:    'Rider has reached your area',
+  };
 
   let activeStep = 1;
   if (order.status === 'paid')       activeStep = 2;
   if (order.status === 'bidding')    activeStep = 3;
-  if (order.status === 'in_transit') activeStep = 4;
+  if (isActiveDelivery)              activeStep = 4;
   if (isDelivered)                   activeStep = 5;
   if (isCancelled)                   activeStep = -1;
 
@@ -135,12 +141,12 @@ export default function OrderDetailScreen() {
     { key: 't1', label: 'Order Placed', timestamp: formatTimestamp(order.createdAt), icon: 'lock' },
     { key: 't2', label: 'Confirmed by Farmer' },
     { key: 't3', label: 'Packed & Ready', subtitle: 'Quality checked' },
-    { key: 't4', label: 'Out for Delivery', subtitle: 'Rider is on the way' },
+    { key: 't4', label: 'Out for Delivery', subtitle: DELIVERY_SUBTITLES[order.status] ?? 'Rider is on the way' },
     { key: 't5', label: 'Delivered', subtitle: 'Escrow released' },
   ];
 
   const showCancel = isPending || isPaid;
-  const showTrack  = isInTransit;
+  const showTrack  = isActiveDelivery;
   const showRate   = isDelivered;
   const showFooter = showCancel || showTrack || showRate;
 
@@ -173,7 +179,7 @@ export default function OrderDetailScreen() {
           <View className="bg-white rounded-2xl p-5 border border-gray-200 mb-6 shadow-sm">
             <View className="flex-row justify-between items-center mb-4">
               <Text className="font-bold text-base text-textPrimary">Delivery Status</Text>
-              {isInTransit && (
+              {isActiveDelivery && (
                 <TouchableOpacity
                   onPress={() => router.push(`/(buyer)/orders/tracking/${order._id}` as any)}
                   className="flex-row items-center gap-x-1"

@@ -3,30 +3,53 @@ import { useFocusEffect } from '@react-navigation/native';
 import {
   View, Text, FlatList, TouchableOpacity,
   StyleSheet, Platform, ActivityIndicator,
-  RefreshControl, Modal, TextInput, Alert,
+  RefreshControl, Modal, TextInput, Alert, Image,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { Colors } from '@/constants/colors';
 import orderService, { Order } from '@/services/order.service';
-import bidService from '@/services/bid.service';
+import bidService, { Bid } from '@/services/bid.service';
 
 // ─── Bid Modal ────────────────────────────────────────────────────────────────
 
 function PlaceBidModal({
   order,
+  existingBid,
   visible,
   onClose,
   onSuccess,
 }: {
   order: Order | null;
+  existingBid: Bid | null;
   visible: boolean;
   onClose: () => void;
   onSuccess: () => void;
 }) {
+  const isEdit = !!existingBid;
   const [bidAmount, setBidAmount] = useState('');
   const [estimatedHours, setEstimatedHours] = useState('');
   const [message, setMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
+
+  // Pre-fill when editing an existing bid
+  React.useEffect(() => {
+    if (visible && existingBid) {
+      setBidAmount(String(existingBid.bidAmount));
+      setEstimatedHours(String(existingBid.estimatedDeliveryTime));
+      setMessage(existingBid.message ?? '');
+    } else if (visible && !existingBid) {
+      setBidAmount('');
+      setEstimatedHours('');
+      setMessage('');
+    }
+  }, [visible, existingBid]);
+
+  const handleClose = () => {
+    setBidAmount('');
+    setEstimatedHours('');
+    setMessage('');
+    onClose();
+  };
 
   const handleSubmit = async () => {
     if (!order) return;
@@ -38,42 +61,30 @@ function PlaceBidModal({
 
     setSubmitting(true);
     try {
-      await bidService.place(order._id, {
-        bidAmount: amount,
-        estimatedDeliveryTime: hours,
-        message,
-      });
-      Alert.alert('Bid Placed! ✅', `Your bid of ₨${amount} has been submitted. The farmer will review it.`);
-      setBidAmount('');
-      setEstimatedHours('');
-      setMessage('');
+      if (isEdit && existingBid) {
+        await bidService.update(existingBid._id, { bidAmount: amount, estimatedDeliveryTime: hours, message });
+        Alert.alert('Bid Updated! ✅', `Your bid has been updated to ₨${amount}.`);
+      } else {
+        await bidService.place(order._id, { bidAmount: amount, estimatedDeliveryTime: hours, message });
+        Alert.alert('Bid Placed! ✅', `Your bid of ₨${amount} has been submitted. The farmer will review it.`);
+      }
       onSuccess();
-      onClose();
+      handleClose();
     } catch (e: any) {
-      Alert.alert('Bid Failed', e?.response?.data?.message ?? 'Could not place bid. Try again.');
+      Alert.alert(isEdit ? 'Update Failed' : 'Bid Failed', e?.response?.data?.message ?? 'Could not submit bid. Try again.');
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={() => {
-      setBidAmount('');
-      setEstimatedHours('');
-      setMessage('');
-      onClose();
-    }}>
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={handleClose}>
       <View style={modal.backdrop}>
         <View style={modal.sheet}>
           <View style={modal.handle} />
           <View style={modal.header}>
-            <Text style={modal.title}>Place Your Bid 💼</Text>
-            <TouchableOpacity onPress={() => {
-              setBidAmount('');
-              setEstimatedHours('');
-              setMessage('');
-              onClose();
-            }}>
+            <Text style={modal.title}>{isEdit ? 'Update Your Bid ✏️' : 'Place Your Bid 💼'}</Text>
+            <TouchableOpacity onPress={handleClose}>
               <Feather name="x" size={22} color={Colors.textSecondary} />
             </TouchableOpacity>
           </View>
@@ -133,8 +144,8 @@ function PlaceBidModal({
               <ActivityIndicator color="#fff" />
             ) : (
               <>
-                <Feather name="send" size={16} color="#fff" />
-                <Text style={modal.submitText}>Submit Bid</Text>
+                <Feather name={isEdit ? 'edit-2' : 'send'} size={16} color="#fff" />
+                <Text style={modal.submitText}>{isEdit ? 'Update Bid' : 'Submit Bid'}</Text>
               </>
             )}
           </TouchableOpacity>
@@ -146,22 +157,43 @@ function PlaceBidModal({
 
 // ─── Job Card ────────────────────────────────────────────────────────────────
 
-function JobCard({ item, onBid }: { item: Order; onBid: (order: Order) => void }) {
+function JobCard({ item, existingBid, onBid }: { item: Order; existingBid: Bid | null; onBid: (order: Order) => void }) {
+  const [imgError, setImgError] = useState(false);
+  const imgUri = item.product?.images?.[0];
+
   return (
     <View style={styles.card}>
       <View style={styles.cardHeader}>
         <View style={styles.orderIdBadge}>
           <Text style={styles.orderIdText}>#{item._id.slice(-6).toUpperCase()}</Text>
         </View>
-        <View style={styles.statusChip}>
-          <View style={[styles.dot, { backgroundColor: '#F59E0B' }]} />
-          <Text style={styles.statusText}>Open for Bids</Text>
-        </View>
+        {existingBid ? (
+          <View style={[styles.statusChip, { backgroundColor: '#D1FAE5' }]}>
+            <Feather name="check-circle" size={11} color="#059669" />
+            <Text style={[styles.statusText, { color: '#065F46' }]}>Bid: ₨{existingBid.bidAmount.toLocaleString()}</Text>
+          </View>
+        ) : (
+          <View style={styles.statusChip}>
+            <View style={[styles.dot, { backgroundColor: '#F59E0B' }]} />
+            <Text style={styles.statusText}>Open for Bids</Text>
+          </View>
+        )}
       </View>
 
       {/* Product Info */}
       <View style={styles.productRow}>
-        <View style={styles.productEmoji}><Text style={{ fontSize: 28 }}>🌾</Text></View>
+        <View style={styles.productEmoji}>
+          {imgUri && !imgError ? (
+            <Image
+              source={{ uri: imgUri }}
+              style={styles.productImage}
+              resizeMode="cover"
+              onError={() => setImgError(true)}
+            />
+          ) : (
+            <Text style={{ fontSize: 28 }}>🌾</Text>
+          )}
+        </View>
         <View style={{ flex: 1 }}>
           <Text style={styles.productName}>{item.product?.title ?? 'Agricultural Product'}</Text>
           <Text style={styles.productMeta}>
@@ -190,9 +222,9 @@ function JobCard({ item, onBid }: { item: Order; onBid: (order: Order) => void }
       </View>
 
       {/* Action */}
-      <TouchableOpacity style={styles.bidBtn} onPress={() => onBid(item)} activeOpacity={0.85}>
-        <Feather name="trending-up" size={15} color="#fff" />
-        <Text style={styles.bidBtnText}>Place Bid</Text>
+      <TouchableOpacity style={[styles.bidBtn, existingBid && { backgroundColor: '#059669' }]} onPress={() => onBid(item)} activeOpacity={0.85}>
+        <Feather name={existingBid ? 'edit-2' : 'trending-up'} size={15} color="#fff" />
+        <Text style={styles.bidBtnText}>{existingBid ? 'Edit Bid' : 'Place Bid'}</Text>
       </TouchableOpacity>
     </View>
   );
@@ -202,32 +234,55 @@ function JobCard({ item, onBid }: { item: Order; onBid: (order: Order) => void }
 
 export default function LogisticsJobs() {
   const [jobs, setJobs] = useState<Order[]>([]);
+  const [myBidMap, setMyBidMap] = useState<Record<string, Bid>>({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
 
-  const fetchJobs = useCallback(async (isRefresh = false) => {
-    if (isRefresh) setRefreshing(true);
-    else setLoading(true);
-    setError(null);
+  const fetchJobs = useCallback(async (isRefresh = false, silent = false) => {
+    if (!silent) {
+      if (isRefresh) setRefreshing(true);
+      else setLoading(true);
+      setError(null);
+    }
     try {
-      // Use the dedicated /available endpoint — getMyOrders() returns empty for logistics users
-      const available = await orderService.getAvailableOrders();
+      const [available, myBids] = await Promise.all([
+        orderService.getAvailableOrders(),
+        bidService.getMyBids(),
+      ]);
       setJobs(available);
+      // Build orderId → bid map for O(1) lookup in render
+      const map: Record<string, Bid> = {};
+      myBids.forEach(b => {
+        if (b.status === 'pending' && b.order) {
+          const orderId = typeof b.order === 'string' ? b.order : (b.order as any)._id;
+          map[orderId] = b as unknown as Bid;
+        }
+      });
+      setMyBidMap(map);
     } catch (e: any) {
-      setError(e?.response?.data?.message ?? 'Failed to load jobs.');
+      if (!silent) setError(e?.response?.data?.message ?? 'Failed to load jobs.');
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (!silent) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   }, []);
 
-  useFocusEffect(useCallback(() => { fetchJobs(); }, [fetchJobs]));
+  useFocusEffect(useCallback(() => {
+    fetchJobs();
+    const interval = setInterval(() => fetchJobs(false, true), 30000);
+    return () => clearInterval(interval);
+  }, [fetchJobs]));
+
+  const [selectedExistingBid, setSelectedExistingBid] = useState<Bid | null>(null);
 
   const handleBid = (order: Order) => {
     setSelectedOrder(order);
+    setSelectedExistingBid(myBidMap[order._id] ?? null);
     setModalVisible(true);
   };
 
@@ -299,7 +354,7 @@ export default function LogisticsJobs() {
         <FlatList
           data={jobs}
           keyExtractor={item => item._id}
-          renderItem={({ item }) => <JobCard item={item} onBid={handleBid} />}
+          renderItem={({ item }) => <JobCard item={item} existingBid={myBidMap[item._id] ?? null} onBid={handleBid} />}
           contentContainerStyle={styles.list}
           showsVerticalScrollIndicator={false}
           refreshControl={
@@ -320,6 +375,7 @@ export default function LogisticsJobs() {
       {/* Bid Modal */}
       <PlaceBidModal
         order={selectedOrder}
+        existingBid={selectedExistingBid}
         visible={modalVisible}
         onClose={() => setModalVisible(false)}
         onSuccess={() => fetchJobs(true)}
@@ -391,7 +447,9 @@ const styles = StyleSheet.create({
   productEmoji: {
     width: 52, height: 52, borderRadius: 16,
     backgroundColor: '#F0FDF4', alignItems: 'center', justifyContent: 'center',
+    overflow: 'hidden',
   },
+  productImage: { width: 52, height: 52 },
   productName: { fontSize: 15, fontWeight: '800', color: '#111827', marginBottom: 3 },
   productMeta: { fontSize: 12, color: Colors.textSecondary, fontWeight: '500' },
   productValue: { fontSize: 17, fontWeight: '900', color: Colors.primary },

@@ -45,6 +45,11 @@ const bidService = {
     return data.data.bid;
   },
 
+  update: async (bidId: string, payload: PlaceBidPayload): Promise<Bid> => {
+    const { data } = await api.patch(`/bids/${bidId}`, payload);
+    return data.data.bid;
+  },
+
   getForOrder: async (orderId: string): Promise<Bid[]> => {
     const { data } = await api.get(`/orders/${orderId}/bids`);
     return data.data.bids;

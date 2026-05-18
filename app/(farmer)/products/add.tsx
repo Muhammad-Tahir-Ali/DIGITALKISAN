@@ -130,8 +130,8 @@ export default function AddProductScreen() {
 
     const glow = Animated.loop(
       Animated.sequence([
-        Animated.timing(glowAnim,     { toValue: 1,       duration: 900,  useNativeDriver: true }),
-        Animated.timing(glowAnim,     { toValue: 0.3,     duration: 900,  useNativeDriver: true }),
+        Animated.timing(glowAnim,     { toValue: 1,       duration: 900,  useNativeDriver: Platform.OS !== 'web' }),
+        Animated.timing(glowAnim,     { toValue: 0.3,     duration: 900,  useNativeDriver: Platform.OS !== 'web' }),
       ])
     );
     const progress = Animated.loop(
@@ -142,8 +142,8 @@ export default function AddProductScreen() {
     );
     const scanLine = Animated.loop(
       Animated.sequence([
-        Animated.timing(scanLineAnim, { toValue: 1,       duration: 1800, useNativeDriver: true }),
-        Animated.timing(scanLineAnim, { toValue: 0,       duration: 600,  useNativeDriver: true }),
+        Animated.timing(scanLineAnim, { toValue: 1,       duration: 1800, useNativeDriver: Platform.OS !== 'web' }),
+        Animated.timing(scanLineAnim, { toValue: 0,       duration: 600,  useNativeDriver: Platform.OS !== 'web' }),
       ])
     );
     glow.start();

@@ -2,7 +2,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView,
   FlatList, StyleSheet, Dimensions,
-  NativeSyntheticEvent, NativeScrollEvent, Animated, ActivityIndicator, Share, Alert
+  NativeSyntheticEvent, NativeScrollEvent, Animated, ActivityIndicator, Share, Alert, Platform
 } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
@@ -80,8 +80,8 @@ export default function ProductDetailScreen() {
       maxStock:    product.availableQuantity,
     });
     Animated.sequence([
-      Animated.timing(addedAnim, { toValue: 0.9, duration: 80,  useNativeDriver: true }),
-      Animated.spring(addedAnim,  { toValue: 1,   friction: 4,   useNativeDriver: true }),
+      Animated.timing(addedAnim, { toValue: 0.9, duration: 80,  useNativeDriver: Platform.OS !== 'web' }),
+      Animated.spring(addedAnim,  { toValue: 1,   friction: 4,   useNativeDriver: Platform.OS !== 'web' }),
     ]).start();
   }, [product, qty, addItem, addedAnim]);
 

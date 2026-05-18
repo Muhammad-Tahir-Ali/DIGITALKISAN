@@ -1,45 +1,101 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, Modal, TextInput,
-  ScrollView, ActivityIndicator, Alert,
+  View, Text, StyleSheet, TouchableOpacity,
+  ScrollView, ActivityIndicator, Linking,
 } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE, Region } from 'react-native-maps';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '@/constants/colors';
-import orderService, { Order } from '@/services/order.service';
+import orderService, { Order, OrderStatus } from '@/services/order.service';
 import { socketService } from '@/services/socket.service';
-import { Button } from '@/components/ui';
-import { EscrowBadge } from '@/components/checkout/EscrowBadge';
-import { StatusTimeline, TimelineStep } from '@/components/checkout/StatusTimeline';
 
-// Deterministic Pakistan-region coords from order id (fallback when no GeoJSON)
+const ACTIVE_STATUSES: OrderStatus[] = ['in_transit', 'picked_up', 'reached'];
+
+// ── Delivery steps shown to the buyer ─────────────────────────────────────────
+const STEPS: { key: OrderStatus; label: string; icon: React.ComponentProps<typeof Feather>['name']; desc: string }[] = [
+  { key: 'in_transit', label: 'In Transit',  icon: 'truck',        desc: 'Rider is heading to pickup'  },
+  { key: 'picked_up',  label: 'Picked Up',   icon: 'package',      desc: 'Product collected from farm' },
+  { key: 'reached',    label: 'Reached',     icon: 'map-pin',      desc: 'Rider is at your location'   },
+  { key: 'delivered',  label: 'Delivered',   icon: 'check-circle', desc: 'Order successfully delivered' },
+];
+
+function stepIndexOf(status: OrderStatus) {
+  return STEPS.findIndex(s => s.key === status);
+}
+
+// ── Progress Stepper ──────────────────────────────────────────────────────────
+function DeliveryStepper({ status }: { status: OrderStatus }) {
+  const current = stepIndexOf(status);
+  const isLastStep = current === STEPS.length - 1;
+
+  return (
+    <View style={styles.stepper}>
+      {STEPS.map((step, i) => {
+        const done   = i < current || (isLastStep && i === current);
+        const active = i === current && !isLastStep;
+
+        return (
+          <React.Fragment key={step.key}>
+            <View style={styles.stepCol}>
+              <View style={[
+                styles.stepCircle,
+                done   ? styles.stepDone   :
+                active ? styles.stepActive :
+                         styles.stepPending,
+              ]}>
+                <Feather
+                  name={done ? 'check' : step.icon}
+                  size={13}
+                  color={done ? '#fff' : active ? Colors.primary : '#CBD5E1'}
+                />
+              </View>
+              <Text style={[
+                styles.stepLabel,
+                done   ? styles.stepLabelDone   :
+                active ? styles.stepLabelActive :
+                         styles.stepLabelPending,
+              ]} numberOfLines={1}>
+                {step.label}
+              </Text>
+            </View>
+            {i < STEPS.length - 1 && (
+              <View style={[styles.stepLine, done ? styles.stepLineDone : undefined]} />
+            )}
+          </React.Fragment>
+        );
+      })}
+    </View>
+  );
+}
+
+// ── Deterministic Pakistan-region coords (fallback) ───────────────────────────
 function pseudoCoords(seed: string, index = 0) {
-  let hash = 0;
-  for (let i = 0; i < seed.length; i++) hash = ((hash << 5) - hash + seed.charCodeAt(i)) | 0;
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = ((h << 5) - h + seed.charCodeAt(i)) | 0;
   return {
-    latitude:  30.3 + ((Math.abs(hash + index * 7919) % 400) / 1000),
-    longitude: 70.1 + ((Math.abs(hash + index * 3541) % 300) / 1000),
+    latitude:  30.3 + ((Math.abs(h + index * 7919) % 400) / 1000),
+    longitude: 70.1 + ((Math.abs(h + index * 3541) % 300) / 1000),
   };
 }
 
 type DriverLocation = { latitude: number; longitude: number };
 
+// ── Screen ────────────────────────────────────────────────────────────────────
 export default function OrderTrackingScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const router = useRouter();
-  const insets = useSafeAreaInsets();
-  const mapRef = useRef<MapView>(null);
+  const router  = useRouter();
+  const insets  = useSafeAreaInsets();
+  const mapRef  = useRef<MapView>(null);
 
-  const [order, setOrder] = useState<Order | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [otpVisible, setOtpVisible] = useState(false);
-  const [otpCode, setOtpCode] = useState('');
-  const [driverLocation, setDriverLocation] = useState<DriverLocation | null>(null);
+  const [order,           setOrder]           = useState<Order | null>(null);
+  const [loading,         setLoading]         = useState(true);
+  const [driverLocation,  setDriverLocation]  = useState<DriverLocation | null>(null);
   const [socketConnected, setSocketConnected] = useState(false);
+  const [lastUpdate,      setLastUpdate]      = useState<Date | null>(null);
 
-  // Fetch order once
+  // Fetch order
   useEffect(() => {
     if (!id) return;
     orderService.getById(id as string)
@@ -48,113 +104,112 @@ export default function OrderTrackingScreen() {
       .finally(() => setLoading(false));
   }, [id]);
 
-  // Connect socket and listen for driver location when order is in_transit
+  // Socket: join room, listen to driver GPS + status changes
+  // Depends only on order._id so listeners are stable — status changes handled inside callbacks
   useEffect(() => {
-    if (!order || order.status !== 'in_transit') return;
+    if (!order?._id) return;
 
-    const socket = socketService.connect();
-    setSocketConnected(socket.connected);
+    const sock = socketService.connect();
+    setSocketConnected(sock.connected);
 
-    socket.on('connect', () => setSocketConnected(true));
-    socket.on('disconnect', () => setSocketConnected(false));
+    const onConnect    = () => setSocketConnected(true);
+    const onDisconnect = () => setSocketConnected(false);
+    sock.on('connect',    onConnect);
+    sock.on('disconnect', onDisconnect);
 
     socketService.joinOrder(order._id);
-    const cleanup = socketService.onDriverLocation((data) => {
-      setDriverLocation({ latitude: data.latitude, longitude: data.longitude });
-      // Animate map to follow the driver
-      mapRef.current?.animateToRegion({
-        latitude: data.latitude,
-        longitude: data.longitude,
-        latitudeDelta: 0.02,
-        longitudeDelta: 0.02,
-      }, 800);
+
+    // Live GPS from logistics provider
+    const offLocation = socketService.onDriverLocation((data) => {
+      const loc = { latitude: data.latitude, longitude: data.longitude };
+      setDriverLocation(loc);
+      setLastUpdate(new Date());
+      mapRef.current?.animateToRegion({ ...loc, latitudeDelta: 0.02, longitudeDelta: 0.02 }, 800);
+    });
+
+    // Live status updates — update order state; no effect re-run needed
+    const offStatus = socketService.onOrderStatusUpdated(order._id, ({ status }) => {
+      setOrder(prev => prev ? { ...prev, status: status as OrderStatus } : prev);
     });
 
     return () => {
-      cleanup();
-      socket.off('connect');
-      socket.off('disconnect');
+      offLocation();
+      offStatus();
+      sock.off('connect',    onConnect);
+      sock.off('disconnect', onDisconnect);
     };
-  }, [order?._id, order?.status]);
-
-  // Map status → timeline step
-  let activeStep = 1;
-  if (order?.status === 'paid') activeStep = 2;
-  if (order?.status === 'bidding') activeStep = 3;
-  if (order?.status === 'in_transit') activeStep = 4;
-  if (order?.status === 'delivered') activeStep = 5;
-
-  const ORDER_TRACKER: TimelineStep[] = [
-    { key: 't1', label: 'Order Confirmed', timestamp: '10:30 AM', icon: 'check-circle' },
-    { key: 't2', label: 'Quality Checked & Packed', timestamp: '11:15 AM', subtitle: 'AI graded premium quality', icon: 'package' },
-    { key: 't3', label: 'Handed over to Rider', timestamp: '1:00 PM', icon: 'truck' },
-    { key: 't4', label: 'Out for Delivery', subtitle: 'Live location active', icon: 'map-pin' },
-    { key: 't5', label: 'Delivered', subtitle: 'Confirm delivery to release funds', icon: 'home' },
-  ];
-
-  const handleConfirmDelivery = async () => {
-    if (otpCode.length !== 4) return;
-    try {
-      await orderService.updateStatus(id as string, 'delivered');
-      setOtpVisible(false);
-      router.replace('/(buyer)/orders' as any);
-    } catch (e: any) {
-      Alert.alert('Error', e?.response?.data?.message ?? 'Could not confirm delivery. Please try again.');
-    }
-  };
-
-  // Derive map region: center on driver if available, else buyer/farmer coords
-  const fallbackCoords = order ? pseudoCoords(order._id) : { latitude: 30.3753, longitude: 69.3451 };
-  const farmerCoords = (() => {
-    const c = (order?.farmer as any)?.location?.coordinates;
-    return c ? { latitude: c[1], longitude: c[0] } : pseudoCoords(order?._id ?? 'f', 1);
-  })();
-  const buyerCoords = (() => {
-    const c = (order?.buyer as any)?.location?.coordinates;
-    return c ? { latitude: c[1], longitude: c[0] } : pseudoCoords(order?._id ?? 'b', 2);
-  })();
-
-  const initialRegion: Region = {
-    ...(driverLocation ?? fallbackCoords),
-    latitudeDelta: 0.08,
-    longitudeDelta: 0.08,
-  };
-
-  const provider = order?.status === 'in_transit' ? order.logisticsProvider : null;
-  const driverName = provider?.name ?? 'Rider';
-  const driverPhone = provider?.phone ?? '—';
+  }, [order?._id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) {
     return (
-      <View style={[styles.root, { alignItems: 'center', justifyContent: 'center' }]}>
+      <View style={[styles.root, styles.centered]}>
         <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={{ color: Colors.textSecondary, marginTop: 12 }}>Loading order...</Text>
+        <Text style={styles.loadingText}>Loading order…</Text>
       </View>
     );
   }
 
   if (!order) {
     return (
-      <View style={[styles.root, { alignItems: 'center', justifyContent: 'center', padding: 24 }]}>
+      <View style={[styles.root, styles.centered, { padding: 24 }]}>
         <Feather name="alert-circle" size={48} color={Colors.error} />
-        <Text style={{ fontSize: 18, fontWeight: '800', color: Colors.textPrimary, marginTop: 16 }}>Order Not Found</Text>
-        <TouchableOpacity
-          style={{ marginTop: 24, backgroundColor: Colors.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12 }}
-          onPress={() => router.back()}
-        >
+        <Text style={styles.errorTitle}>Order Not Found</Text>
+        <TouchableOpacity style={styles.backPill} onPress={() => router.back()}>
           <Text style={{ color: '#fff', fontWeight: '700' }}>Go Back</Text>
         </TouchableOpacity>
       </View>
     );
   }
 
-  const isInTransit = order.status === 'in_transit';
+  const isActive    = ACTIVE_STATUSES.includes(order.status);
+  const isDelivered = order.status === 'delivered';
+
+  // Map coordinates
+  const farmerCoords = (() => {
+    const c = (order.farmer as any)?.location?.coordinates;
+    return c ? { latitude: c[1], longitude: c[0] } : pseudoCoords(order._id, 1);
+  })();
+  const buyerCoords = (() => {
+    const c = (order.buyer as any)?.location?.coordinates;
+    return c ? { latitude: c[1], longitude: c[0] } : pseudoCoords(order._id, 2);
+  })();
+  const mapCenter = driverLocation ?? (isActive ? farmerCoords : buyerCoords);
+  const initialRegion: Region = { ...mapCenter, latitudeDelta: 0.08, longitudeDelta: 0.08 };
+
+  const provider   = order.logisticsProvider;
+  const riderName  = provider?.name  ?? 'Rider';
+  const riderPhone = provider?.phone ?? '';
+
+  const currentStep = STEPS.find(s => s.key === order.status);
+  const statusColors: Record<string, string> = {
+    in_transit: '#1E40AF',
+    picked_up:  '#92400E',
+    reached:    '#5B21B6',
+    delivered:  '#065F46',
+  };
+  const statusBg: Record<string, string> = {
+    in_transit: '#DBEAFE',
+    picked_up:  '#FEF3C7',
+    reached:    '#EDE9FE',
+    delivered:  '#D1FAE5',
+  };
 
   return (
     <View style={styles.root}>
-      {/* ── MAP HEADER ── */}
+
+      {/* ── DELIVERED BANNER ── */}
+      {isDelivered && (
+        <View style={styles.deliveredBanner}>
+          <Text style={styles.deliveredBannerText}>🎉 Order Delivered Successfully!</Text>
+          <TouchableOpacity onPress={() => router.back()} style={styles.deliveredBannerBtn}>
+            <Text style={styles.deliveredBannerBtnText}>Done</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* ── MAP ── */}
       <View style={styles.mapArea}>
-        {isInTransit ? (
+        {isActive ? (
           <MapView
             ref={mapRef}
             provider={PROVIDER_GOOGLE}
@@ -164,23 +219,19 @@ export default function OrderTrackingScreen() {
             showsCompass={false}
             toolbarEnabled={false}
           >
-            {/* Farmer pickup marker */}
-            <Marker coordinate={farmerCoords} title="Pickup" description={`Farmer: ${(order.farmer as any)?.name ?? '—'}`}>
-              <View style={styles.markerGreen}>
-                <Text style={{ fontSize: 16 }}>🌾</Text>
-              </View>
+            {/* Farm pickup */}
+            <Marker coordinate={farmerCoords} title="Farm Pickup" description={order.farmer?.name ?? ''}>
+              <View style={styles.markerGreen}><Text style={{ fontSize: 16 }}>🌾</Text></View>
             </Marker>
 
-            {/* Buyer delivery marker */}
-            <Marker coordinate={buyerCoords} title="Delivery" description={order.shippingAddress?.address ?? 'Your address'}>
-              <View style={styles.markerRed}>
-                <Text style={{ fontSize: 16 }}>📦</Text>
-              </View>
+            {/* Delivery destination */}
+            <Marker coordinate={buyerCoords} title="Your Address" description={order.shippingAddress?.address ?? ''}>
+              <View style={styles.markerRed}><Text style={{ fontSize: 16 }}>📦</Text></View>
             </Marker>
 
-            {/* Live driver marker */}
+            {/* Live rider position */}
             {driverLocation && (
-              <Marker coordinate={driverLocation} title={driverName} description="Driver location">
+              <Marker coordinate={driverLocation} title={riderName}>
                 <View style={styles.markerDriver}>
                   <Feather name="truck" size={16} color="#fff" />
                 </View>
@@ -189,21 +240,20 @@ export default function OrderTrackingScreen() {
           </MapView>
         ) : (
           <View style={styles.mapBg}>
-            <Feather name="map" size={100} color={Colors.gray[200]} style={{ opacity: 0.5 }} />
-            <Text style={styles.mapText}>
-              {order.status === 'delivered' ? 'Order Delivered' : 'Awaiting Pickup'}
-            </Text>
+            <Text style={{ fontSize: 56, marginBottom: 8 }}>{isDelivered ? '🎉' : '🗺️'}</Text>
+            <Text style={styles.mapBgText}>{isDelivered ? 'Order Delivered!' : 'Awaiting Pickup'}</Text>
           </View>
         )}
 
-        {/* Live indicator */}
-        {isInTransit && (
+        {/* LIVE chip */}
+        {isActive && (
           <View style={[styles.liveChip, { top: insets.top + 10 }]}>
-            <View style={[styles.liveDot, { backgroundColor: socketConnected ? '#22C55E' : '#94A3B8' }]} />
-            <Text style={styles.liveText}>{socketConnected ? 'LIVE' : 'Connecting...'}</Text>
+            <View style={[styles.liveDot, { backgroundColor: socketConnected ? '#22C55E' : '#F59E0B' }]} />
+            <Text style={styles.liveText}>{socketConnected ? 'LIVE' : 'Connecting…'}</Text>
           </View>
         )}
 
+        {/* Back button */}
         <TouchableOpacity onPress={() => router.back()} style={[styles.backBtn, { top: insets.top + 10 }]}>
           <Feather name="arrow-left" size={20} color={Colors.textPrimary} />
         </TouchableOpacity>
@@ -211,130 +261,145 @@ export default function OrderTrackingScreen() {
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
 
-        {/* ── DRIVER INFO CARD ── */}
-        <View style={styles.driverCard}>
-          <View style={styles.driverRow}>
-            <View style={styles.driverAvatar}>
-              <Feather name="user" size={24} color={Colors.textSecondary} />
+        {/* ── RIDER CARD ── */}
+        <View style={styles.riderCard}>
+          <View style={styles.riderRow}>
+            <View style={styles.riderAvatar}>
+              <Feather name="truck" size={22} color={Colors.primary} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.driverName}>{driverName}</Text>
-              <Text style={styles.driverVehicle}>
-                {isInTransit
-                  ? (driverPhone !== '—' ? driverPhone : 'Driver assigned')
-                  : 'No driver assigned yet'}
+              <Text style={styles.riderName}>{riderName}</Text>
+              <Text style={styles.riderSub}>
+                {provider ? (riderPhone || 'Logistics Provider') : 'No rider assigned yet'}
               </Text>
             </View>
-            {isInTransit && driverPhone !== '—' && (
-              <TouchableOpacity style={styles.phoneBtn}>
-                <Feather name="phone-call" size={18} color="#fff" />
+            {riderPhone ? (
+              <TouchableOpacity
+                style={styles.phoneBtn}
+                onPress={() => Linking.openURL(`tel:${riderPhone}`)}
+              >
+                <Feather name="phone-call" size={17} color="#fff" />
               </TouchableOpacity>
+            ) : null}
+          </View>
+
+          {/* Current status pill */}
+          <View style={[styles.statusPill, { backgroundColor: statusBg[order.status] ?? '#F1F5F9' }]}>
+            <Feather name={currentStep?.icon ?? 'clock'} size={14} color={statusColors[order.status] ?? '#475569'} />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.statusPillLabel, { color: statusColors[order.status] ?? '#475569' }]}>
+                {currentStep?.label ?? order.status.replace('_', ' ')}
+              </Text>
+              {currentStep?.desc && (
+                <Text style={[styles.statusPillDesc, { color: statusColors[order.status] ?? '#475569' }]}>
+                  {currentStep.desc}
+                </Text>
+              )}
+            </View>
+            {lastUpdate && (
+              <Text style={[styles.lastUpdate, { color: statusColors[order.status] ?? '#475569' }]}>
+                {lastUpdate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </Text>
             )}
           </View>
-          <View style={styles.driverEtaRow}>
-            <View>
-              <Text style={styles.etaLabel}>Status</Text>
-              <Text style={[styles.etaTime, { fontSize: 15 }]}>
-                {isInTransit ? (driverLocation ? 'En Route' : 'Locating driver...') : order.status.replace('_', ' ')}
+        </View>
+
+        {/* ── DELIVERY STEPPER ── */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Delivery Progress</Text>
+          <DeliveryStepper status={order.status} />
+        </View>
+
+        {/* ── ROUTE ── */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Route</Text>
+          <View style={styles.routeRow}>
+            <View style={[styles.routeDot, { backgroundColor: Colors.primary }]} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.routeLabel}>Pickup</Text>
+              <Text style={styles.routeAddr} numberOfLines={2}>
+                {(order.farmer as any)?.location?.address ?? order.farmer?.name ?? '—'}
               </Text>
             </View>
-            {driverLocation && (
-              <View style={{ alignItems: 'flex-end' }}>
-                <Text style={styles.etaLabel}>Last Update</Text>
-                <Text style={styles.etaVal}>{new Date().toLocaleTimeString()}</Text>
-              </View>
-            )}
+          </View>
+          <View style={styles.routeConnector} />
+          <View style={styles.routeRow}>
+            <View style={[styles.routeDot, { backgroundColor: '#EF4444' }]} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.routeLabel}>Delivery</Text>
+              <Text style={styles.routeAddr} numberOfLines={2}>
+                {order.shippingAddress?.address ?? '—'}
+              </Text>
+            </View>
           </View>
         </View>
 
-        {/* ── TRUST & ESCROW ── */}
-        <View style={styles.mb}>
-          <EscrowBadge variant="holding" size="sm" />
+        {/* ── ORDER SUMMARY ── */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Order Summary</Text>
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryKey}>Product</Text>
+            <Text style={styles.summaryVal}>{order.product?.title ?? '—'}</Text>
+          </View>
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryKey}>Quantity</Text>
+            <Text style={styles.summaryVal}>{order.quantity}</Text>
+          </View>
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryKey}>Order ID</Text>
+            <Text style={styles.summaryVal}>#DK-{order._id.slice(-8).toUpperCase()}</Text>
+          </View>
+          <View style={[styles.summaryRow, { marginBottom: 0 }]}>
+            <Text style={styles.summaryKey}>Total</Text>
+            <Text style={[styles.summaryVal, { color: Colors.primary, fontWeight: '800' }]}>
+              ₨{order.totalPrice.toLocaleString()}
+            </Text>
+          </View>
         </View>
 
-        {/* ── TIMELINE ── */}
-        <View style={styles.timelineCard}>
-          <StatusTimeline steps={ORDER_TRACKER} current={activeStep} />
+        {/* ── ESCROW NOTE ── */}
+        <View style={styles.escrowNote}>
+          <Feather name="shield" size={14} color={Colors.info} />
+          <Text style={styles.escrowText}>
+            Your payment of <Text style={{ fontWeight: '800' }}>₨{order.totalPrice.toLocaleString()}</Text> is
+            locked in escrow and will be released to the farmer only after delivery is confirmed.
+          </Text>
         </View>
 
       </ScrollView>
-
-      {/* ── BOTTOM ACTION ── */}
-      {isInTransit && (
-        <View style={[styles.footer, { paddingBottom: insets.bottom + 12 }]}>
-          <Text style={styles.footerHint}>Share OTP with rider when you receive the produce.</Text>
-          <Button
-            variant="primary"
-            label="Provide Delivery OTP"
-            onPress={() => setOtpVisible(true)}
-            size="lg"
-            leftIcon={<Feather name="key" size={18} color="#fff" />}
-            fullWidth
-            style={{ backgroundColor: Colors.agri.shab }}
-          />
-        </View>
-      )}
-
-      {/* ── OTP MODAL ── */}
-      <Modal visible={otpVisible} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { paddingBottom: insets.bottom + 16 }]}>
-            <View style={styles.modalHeader}>
-              <View style={styles.shieldIcon}>
-                <Feather name="shield" size={24} color={Colors.green[600]} />
-              </View>
-            </View>
-            <Text style={styles.modalTitle}>Confirm Delivery</Text>
-            <Text style={styles.modalBody}>
-              By confirming this OTP, you authorize DigitalKisan to release the
-              <Text style={{ fontWeight: 'bold' }}> ₨{order.totalPrice.toLocaleString()} </Text>
-              currently held in Escrow to the farmer.
-            </Text>
-            <Text style={{ fontWeight: '700', marginBottom: 12, marginTop: 10 }}>Enter 4-Digit Delivery Code</Text>
-            <TextInput
-              value={otpCode}
-              onChangeText={setOtpCode}
-              keyboardType="number-pad"
-              maxLength={4}
-              style={styles.otpInput}
-              placeholder="━  ━  ━  ━"
-              placeholderTextColor={Colors.gray[400]}
-            />
-            <View style={{ flexDirection: 'row', gap: 12, marginTop: 20 }}>
-              <Button variant="outline" label="Cancel" onPress={() => setOtpVisible(false)} style={{ flex: 1 }} />
-              <Button
-                variant="primary"
-                label="Release Funds"
-                onPress={handleConfirmDelivery}
-                disabled={otpCode.length !== 4}
-                style={{ flex: 1, backgroundColor: Colors.agri.peela }}
-              />
-            </View>
-          </View>
-        </View>
-      </Modal>
     </View>
   );
 }
 
+// ── Styles ────────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: Colors.background },
-  mapArea: { height: 280, backgroundColor: Colors.gray[100], position: 'relative', overflow: 'hidden' },
+  root: { flex: 1, backgroundColor: '#F8FAFB' },
+  centered: { alignItems: 'center', justifyContent: 'center' },
+  loadingText: { color: Colors.textSecondary, marginTop: 12, fontWeight: '600' },
+  errorTitle: { fontSize: 18, fontWeight: '800', color: Colors.textPrimary, marginTop: 16 },
+  backPill: {
+    marginTop: 24, backgroundColor: Colors.primary,
+    paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12,
+  },
+
+  // Map
+  mapArea: { height: 280, backgroundColor: '#E5E7EB', position: 'relative', overflow: 'hidden' },
   mapBg: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  mapText: { color: Colors.gray[400], fontWeight: 'bold', marginTop: 10 },
+  mapBgText: { color: Colors.textSecondary, fontWeight: '700', fontSize: 16 },
+
   backBtn: {
     position: 'absolute', left: 20,
     width: 44, height: 44, borderRadius: 22, backgroundColor: '#fff',
     alignItems: 'center', justifyContent: 'center',
-    shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 5, elevation: 4,
+    shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 5, elevation: 4,
   },
   liveChip: {
     position: 'absolute', right: 20,
     flexDirection: 'row', alignItems: 'center', gap: 5,
     backgroundColor: '#fff', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 6,
-    shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 5, elevation: 4,
+    shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 5, elevation: 4,
   },
-  liveDot: { width: 8, height: 8, borderRadius: 4 },
+  liveDot:  { width: 8, height: 8, borderRadius: 4 },
   liveText: { fontSize: 11, fontWeight: '900', color: Colors.textPrimary, letterSpacing: 0.5 },
 
   markerGreen: {
@@ -354,49 +419,95 @@ const styles = StyleSheet.create({
     shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 4, elevation: 6,
   },
 
-  content: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 60 },
-  driverCard: {
-    backgroundColor: '#fff', borderRadius: 20, padding: 18,
-    marginTop: -40, marginBottom: 20,
+  // Content
+  content: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 60 },
+
+  // Rider card — floats up over the map
+  riderCard: {
+    backgroundColor: '#fff', borderRadius: 20, padding: 16,
+    marginTop: -36, marginBottom: 16,
     shadowColor: '#000', shadowOpacity: 0.08, shadowOffset: { width: 0, height: 4 },
     shadowRadius: 10, elevation: 5,
   },
-  driverRow: {
-    flexDirection: 'row', alignItems: 'center',
-    borderBottomWidth: 1, borderBottomColor: Colors.gray[100],
-    paddingBottom: 16, marginBottom: 16,
+  riderRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingBottom: 14, marginBottom: 14,
+    borderBottomWidth: 1, borderBottomColor: '#F1F5F9',
   },
-  driverAvatar: {
-    width: 50, height: 50, borderRadius: 16, backgroundColor: Colors.gray[100],
-    alignItems: 'center', justifyContent: 'center', marginRight: 12,
+  riderAvatar: {
+    width: 48, height: 48, borderRadius: 16,
+    backgroundColor: Colors.primaryLight, alignItems: 'center', justifyContent: 'center',
   },
-  driverName: { fontSize: 16, fontWeight: 'bold', color: Colors.textPrimary, marginBottom: 4 },
-  driverVehicle: { fontSize: 12, color: Colors.textSecondary },
-  phoneBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: Colors.success, alignItems: 'center', justifyContent: 'center' },
-
-  driverEtaRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  etaLabel: { fontSize: 11, color: Colors.textSecondary, textTransform: 'uppercase', fontWeight: 'bold', marginBottom: 4 },
-  etaTime: { fontSize: 18, fontWeight: '900', color: Colors.primary },
-  etaVal: { fontSize: 16, fontWeight: '700', color: Colors.textPrimary },
-
-  mb: { marginBottom: 20 },
-  timelineCard: { backgroundColor: '#fff', borderRadius: 20, padding: 20, borderWidth: 1, borderColor: Colors.gray[200] },
-
-  footer: {
-    padding: 20,
-    backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: Colors.gray[100],
-    shadowColor: '#000', shadowOffset: { width: 0, height: -5 }, shadowOpacity: 0.05, elevation: 10,
+  riderName: { fontSize: 16, fontWeight: '800', color: '#111827', marginBottom: 2 },
+  riderSub:  { fontSize: 12, color: Colors.textSecondary },
+  phoneBtn: {
+    width: 42, height: 42, borderRadius: 21,
+    backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center',
   },
-  footerHint: { textAlign: 'center', fontSize: 12, color: Colors.textSecondary, marginBottom: 12, fontWeight: '600' },
 
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  modalContent: { backgroundColor: '#fff', borderTopLeftRadius: 30, borderTopRightRadius: 30, padding: 24 },
-  modalHeader: { alignItems: 'center', marginBottom: 20 },
-  shieldIcon: { width: 60, height: 60, borderRadius: 30, backgroundColor: Colors.green[50], alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: Colors.green[100] },
-  modalTitle: { fontSize: 22, fontWeight: '800', textAlign: 'center', marginBottom: 8 },
-  modalBody: { textAlign: 'center', color: Colors.textSecondary, lineHeight: 22, fontSize: 14, marginBottom: 20 },
-  otpInput: {
-    backgroundColor: Colors.gray[100], borderRadius: 16, paddingVertical: 18,
-    textAlign: 'center', fontSize: 28, fontWeight: '900', letterSpacing: 8, color: Colors.textPrimary,
+  statusPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    borderRadius: 14, padding: 12,
   },
+  statusPillLabel: { fontSize: 14, fontWeight: '800' },
+  statusPillDesc:  { fontSize: 11, fontWeight: '500', marginTop: 1, opacity: 0.8 },
+  lastUpdate: { fontSize: 10, fontWeight: '700' },
+
+  // Cards
+  card: {
+    backgroundColor: '#fff', borderRadius: 20, padding: 16, marginBottom: 12,
+    borderWidth: 1, borderColor: '#F1F5F9',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.03, shadowRadius: 4, elevation: 1,
+  },
+  cardTitle: { fontSize: 14, fontWeight: '800', color: '#111827', marginBottom: 14 },
+
+  // Stepper
+  stepper: { flexDirection: 'row', alignItems: 'flex-start' },
+  stepCol:  { alignItems: 'center', gap: 4, minWidth: 60 },
+  stepCircle: {
+    width: 32, height: 32, borderRadius: 16,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  stepDone:    { backgroundColor: '#059669' },
+  stepActive:  { backgroundColor: Colors.primaryLight, borderWidth: 2, borderColor: Colors.primary },
+  stepPending: { backgroundColor: '#F1F5F9' },
+  stepLabel:     { fontSize: 9, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.3, textAlign: 'center' },
+  stepLabelDone:    { color: '#059669' },
+  stepLabelActive:  { color: Colors.primary },
+  stepLabelPending: { color: '#CBD5E1' },
+  stepLine:     { flex: 1, height: 2, backgroundColor: '#E5E7EB', marginTop: 15 },
+  stepLineDone: { backgroundColor: '#059669' },
+
+  // Route
+  routeRow:       { flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginBottom: 4 },
+  routeDot:       { width: 12, height: 12, borderRadius: 6, marginTop: 3, borderWidth: 2, borderColor: '#fff' },
+  routeConnector: { width: 2, height: 16, backgroundColor: '#E5E7EB', marginLeft: 5, marginBottom: 4 },
+  routeLabel:     { fontSize: 10, fontWeight: '700', color: Colors.textSecondary, textTransform: 'uppercase', marginBottom: 2 },
+  routeAddr:      { fontSize: 13, fontWeight: '600', color: '#374151', lineHeight: 18 },
+
+  // Summary
+  summaryRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
+  summaryKey: { fontSize: 13, color: Colors.textSecondary, fontWeight: '500' },
+  summaryVal: { fontSize: 13, color: '#111827', fontWeight: '600' },
+
+  // Delivered banner
+  deliveredBanner: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: '#059669', paddingHorizontal: 16, paddingVertical: 12,
+  },
+  deliveredBannerText: { color: '#fff', fontWeight: '800', fontSize: 14, flex: 1 },
+  deliveredBannerBtn: {
+    backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 10,
+    paddingHorizontal: 14, paddingVertical: 6, marginLeft: 12,
+  },
+  deliveredBannerBtnText: { color: '#fff', fontWeight: '800', fontSize: 13 },
+
+  // Escrow
+  escrowNote: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 10,
+    backgroundColor: '#EFF6FF', borderRadius: 14, padding: 14,
+    borderWidth: 1, borderColor: '#BFDBFE', marginBottom: 16,
+  },
+  escrowText: { fontSize: 12, color: '#1E40AF', fontWeight: '500', flex: 1, lineHeight: 18 },
 });

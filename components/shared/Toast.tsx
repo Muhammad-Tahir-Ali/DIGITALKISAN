@@ -44,8 +44,8 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
   const hide = useCallback(() => {
     Animated.parallel([
-      Animated.timing(translateY, { toValue: -120, duration: 280, useNativeDriver: true }),
-      Animated.timing(opacity, { toValue: 0, duration: 280, useNativeDriver: true }),
+      Animated.timing(translateY, { toValue: -120, duration: 280, useNativeDriver: Platform.OS !== 'web' }),
+      Animated.timing(opacity, { toValue: 0, duration: 280, useNativeDriver: Platform.OS !== 'web' }),
     ]).start(() => setToast(null));
   }, [translateY, opacity]);
 
@@ -54,8 +54,8 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       if (timer.current) clearTimeout(timer.current);
       setToast({ message, title, variant, duration });
       Animated.parallel([
-        Animated.spring(translateY, { toValue: 0, tension: 60, friction: 10, useNativeDriver: true }),
-        Animated.timing(opacity, { toValue: 1, duration: 200, useNativeDriver: true }),
+        Animated.spring(translateY, { toValue: 0, tension: 60, friction: 10, useNativeDriver: Platform.OS !== 'web' }),
+        Animated.timing(opacity, { toValue: 1, duration: 200, useNativeDriver: Platform.OS !== 'web' }),
       ]).start();
       timer.current = setTimeout(hide, duration);
     },

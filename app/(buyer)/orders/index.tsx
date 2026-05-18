@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity,
-  StyleSheet, RefreshControl, Alert, Platform, ActivityIndicator,
+  StyleSheet, RefreshControl, Alert, Platform, ActivityIndicator, Image,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '@/constants/colors';
@@ -17,7 +17,9 @@ const STATUS_CONFIG: Record<ApiOrderStatus, { label: string; text: string; bg: s
   pending:    { label: 'Pending',        text: '#92400E', bg: '#FEF3C7', dot: '#F59E0B' },
   paid:       { label: 'Confirmed',      text: '#1E40AF', bg: '#DBEAFE', dot: '#3B82F6' },
   bidding:    { label: 'Finding Rider',  text: '#6B21A8', bg: '#F3E8FF', dot: '#A855F7' },
-  in_transit: { label: 'On the Way',    text: '#065F46', bg: '#D1FAE5', dot: '#10B981' },
+  in_transit: { label: 'On the Way',     text: '#065F46', bg: '#D1FAE5', dot: '#10B981' },
+  picked_up:  { label: 'Picked Up',      text: '#92400E', bg: '#FEF3C7', dot: '#F59E0B' },
+  reached:    { label: 'Rider Arrived',  text: '#5B21B6', bg: '#EDE9FE', dot: '#8B5CF6' },
   delivered:  { label: 'Delivered',      text: '#065F46', bg: '#D1FAE5', dot: '#10B981' },
   disputed:   { label: 'Disputed',       text: '#991B1B', bg: '#FEE2E2', dot: '#EF4444' },
   cancelled:  { label: 'Cancelled',      text: '#6B7280', bg: '#F3F4F6', dot: '#9CA3AF' },
@@ -47,6 +49,25 @@ function EmptyOrders({ tab }: { tab: TabKey }) {
   );
 }
 
+function ProductThumb({ uri }: { uri?: string }) {
+  const [errored, setErrored] = useState(false);
+  if (uri && !errored) {
+    return (
+      <Image
+        source={{ uri }}
+        style={{ width: 40, height: 40, borderRadius: 12 }}
+        resizeMode="cover"
+        onError={() => setErrored(true)}
+      />
+    );
+  }
+  return (
+    <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: '#F0FDF4', alignItems: 'center', justifyContent: 'center' }}>
+      <Text style={{ fontSize: 18 }}>🌾</Text>
+    </View>
+  );
+}
+
 export default function BuyerOrdersScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -57,22 +78,32 @@ export default function BuyerOrdersScreen() {
   const [error, setError]             = useState<string | null>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
 
-  const fetchOrders = useCallback(async (isRefresh = false) => {
-    if (isRefresh) setRefreshing(true);
-    else setLoading(true);
-    setError(null);
+  const fetchOrders = useCallback(async (isRefresh = false, silent = false) => {
+    if (!silent) {
+      if (isRefresh) setRefreshing(true);
+      else setLoading(true);
+      setError(null);
+    }
     try {
       const data = await orderService.getMyOrders();
       setOrders(data);
     } catch (e: any) {
-      setError(e?.response?.data?.message ?? 'Failed to load orders');
+      if (!silent) setError(e?.response?.data?.message ?? 'Failed to load orders');
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (!silent) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   }, []);
 
-  useEffect(() => { fetchOrders(); }, [fetchOrders]);
+  useFocusEffect(
+    useCallback(() => {
+      fetchOrders();
+      const interval = setInterval(() => fetchOrders(false, true), 30000);
+      return () => clearInterval(interval);
+    }, [fetchOrders])
+  );
 
   const handleCancel = useCallback((order: Order) => {
     const doCancel = async () => {
@@ -185,7 +216,7 @@ export default function BuyerOrdersScreen() {
             const cfg = STATUS_CONFIG[item.status];
             const isCancelling = cancellingId === item._id;
             const canCancel = item.status === 'pending' || item.status === 'paid';
-            const canTrack  = item.status === 'in_transit';
+            const canTrack  = ['in_transit', 'picked_up', 'reached'].includes(item.status);
             const isDelivered = item.status === 'delivered';
             const canRate   = isDelivered; // rate screen handles pre-fill/disable if already rated
 
@@ -213,9 +244,7 @@ export default function BuyerOrdersScreen() {
 
                 {/* Product + farmer */}
                 <View style={styles.farmRow}>
-                  <View style={styles.farmAvatar}>
-                    <Text style={{ fontSize: 16 }}>🌾</Text>
-                  </View>
+                  <ProductThumb uri={item.product?.images?.[0]} />
                   <View style={styles.farmInfo}>
                     <Text style={styles.farmName} numberOfLines={1}>
                       {item.product?.title ?? 'Product'}
