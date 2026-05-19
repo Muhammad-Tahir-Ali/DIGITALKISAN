@@ -61,11 +61,15 @@ export default function AddProductScreen() {
   const [isPickingImage, setIsPickingImage] = useState(false);
   const [prefilling, setPrefilling] = useState(isEditing);
   const [pendingProductId, setPendingProductId] = useState<string | null>(null);
+  // Stores the product ID when AI fails so the retry button can re-trigger polling
+  // on the same product without creating a new one.
+  const [retryableProductId, setRetryableProductId] = useState<string | null>(null);
   const [submissionStatus, setSubmissionStatus] = useState<{
     type: 'success' | 'error';
     title: string;
     message: string;
     grade?: string;
+    retryable?: boolean;
   } | null>(null);
 
   // Scan animation refs
@@ -81,9 +85,29 @@ export default function AddProductScreen() {
   const selectedUnit = watch('unit');
   const selectedCategory = watch('category');
 
-  // Poll DB every 3s while backend AI is processing — updates scanning → result screen
+  // Reset all local state every time the screen focuses for a fresh "add" session.
+  // Without this, tab-switching or navigating back and returning preserves stale state
+  // (e.g. an AI error screen or a previous edit form) because React Navigation keeps
+  // the screen component mounted in the background.
+  useFocusEffect(
+    useCallback(() => {
+      if (isEditing) return; // edit flow manages its own state via the prefill effect
+      setSelectedImages([]);
+      setIsSimulatingAI(false);
+      setPendingProductId(null);
+      setRetryableProductId(null);
+      setSubmissionStatus(null);
+      reset({ name: '', price: '', quantity: '', unit: 'kg', category: 'grains' });
+    }, [isEditing, reset])
+  );
+
+  // Poll DB every 3s while backend AI is processing — updates scanning → result screen.
+  // Stops on any terminal status: active, rejected, ai_failed.
+  // Gives up after 20 polls (~60s) in case the product gets stuck in pending_ai.
   useEffect(() => {
     if (!pendingProductId) return;
+    let pollCount = 0;
+    const MAX_POLLS = 20;
     const interval = setInterval(async () => {
       try {
         const p = await productService.getById(pendingProductId);
@@ -109,9 +133,54 @@ export default function AddProductScreen() {
             message: p.rejectionReason || 'Your product was rejected — please use clear crop photos.',
           });
           setIsSimulatingAI(false);
+        } else if (p.status === 'ai_failed') {
+          // Gemini call failed on the backend — stop polling and allow retry.
+          // Store the ID in retryableProductId BEFORE clearing pendingProductId so that
+          // handleRetryFromResult can call setPendingProductId(retryableProductId) which
+          // changes the dep and restarts the polling useEffect.
+          clearInterval(interval);
+          setRetryableProductId(pendingProductId);
+          setPendingProductId(null);
+          setIsSimulatingAI(false);
+          setSubmissionStatus({
+            type: 'error',
+            title: 'AI Grading Failed ⚠️',
+            message: p.aiError
+              ? `Could not grade your crop: ${p.aiError}. Tap "Retry AI Grading" to try again.`
+              : 'AI grading could not complete. Tap "Retry AI Grading" to try again.',
+            retryable: true,
+          });
+        } else {
+          // Still pending_ai — check timeout
+          pollCount += 1;
+          if (pollCount >= MAX_POLLS) {
+            clearInterval(interval);
+            setRetryableProductId(pendingProductId);
+            setPendingProductId(null);
+            setIsSimulatingAI(false);
+            setSubmissionStatus({
+              type: 'error',
+              title: 'AI Grading Taking Too Long ⏱️',
+              message: 'Grading is taking longer than expected. Check "My Products" for the result, or tap "Retry AI Grading" to try again.',
+              retryable: true,
+            });
+          }
         }
       } catch {
-        // network blip — keep polling
+        // network blip — keep polling (counted against timeout)
+        pollCount += 1;
+        if (pollCount >= MAX_POLLS) {
+          clearInterval(interval);
+          setRetryableProductId(pendingProductId);
+          setPendingProductId(null);
+          setIsSimulatingAI(false);
+          setSubmissionStatus({
+            type: 'error',
+            title: 'Connection Lost ⚠️',
+            message: 'Could not reach the server. Check "My Products" for the result, or tap "Retry AI Grading" to try again.',
+            retryable: true,
+          });
+        }
       }
     }, 3000);
     return () => clearInterval(interval);
@@ -223,6 +292,27 @@ export default function AddProductScreen() {
 
   const removeImage = (index: number) => {
     setSelectedImages(prev => prev.filter((_, i) => i !== index));
+  };
+
+  // Retry AI grading from the result screen (for ai_failed / timeout cases).
+  // Calls retryAI on the EXISTING product and restarts polling by setting pendingProductId,
+  // which changes the useEffect dep and starts a fresh interval.
+  const handleRetryFromResult = async () => {
+    if (!retryableProductId) return;
+    setSubmissionStatus(null);
+    setIsSimulatingAI(true);
+    try {
+      await productService.retryAI(retryableProductId);
+      // Setting pendingProductId to a new (non-null) value changes the dep →
+      // polling useEffect re-runs and starts a fresh interval.
+      setRetryableProductId(null);
+      setPendingProductId(retryableProductId);
+    } catch (e: any) {
+      setIsSimulatingAI(false);
+      const msg = e?.response?.data?.message ?? 'Could not restart AI grading. Please try from My Products.';
+      // Keep retryableProductId so user can attempt again
+      setSubmissionStatus({ type: 'error', title: 'Retry Failed ❌', message: msg, retryable: true });
+    }
   };
 
   const onSubmit = async (data: ProductForm) => {
@@ -492,15 +582,27 @@ export default function AddProductScreen() {
               setSubmissionStatus(null);
               setSelectedImages([]);
               setPendingProductId(null);
+              setRetryableProductId(null);
               setIsSimulatingAI(false);
               reset({ name: '', price: '', quantity: '', unit: 'kg', category: 'grains' });
               router.replace('/(farmer)/products');
+            } else if (submissionStatus?.retryable) {
+              // ai_failed or timeout — retry the existing product's AI scan
+              handleRetryFromResult();
             } else {
+              // Rejected or upload error — go back to form to start fresh
               setSubmissionStatus(null);
+              setPendingProductId(null);
             }
           }}
         >
-          <Text style={styles.submitBtnText}>{isSuccess ? 'View My Listings' : 'Try Again'}</Text>
+          <Text style={styles.submitBtnText}>
+            {isSuccess
+              ? 'View My Listings'
+              : submissionStatus?.retryable
+                ? 'Retry AI Grading'
+                : 'Try Again'}
+          </Text>
         </TouchableOpacity>
       </View>
     );
