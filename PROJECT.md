@@ -35,7 +35,7 @@ Three isolated sub-projects share no build tooling:
 **Database:** MongoDB Atlas (Mongoose)  
 **Email:** Resend  
 **Payments:** Stripe (wallet topup), JazzCash / EasyPaisa (withdrawal requests)  
-**AI:** Google Gemini 1.5 Flash (product quality grading)
+**AI:** Google Gemini 2.0 Flash (product quality grading)
 
 ### Role Routing
 
@@ -107,7 +107,7 @@ EXPO_PUBLIC_STRIPE_PK=        # Stripe publishable key
 ### Entry Points
 
 - **`src/server.js`** — Creates `http.Server(app)`, calls `initSocket(httpServer)`, connects Mongoose, catches uncaught exceptions
-- **`src/app.js`** — Middleware stack: helmet → rate limiters → CORS → Stripe webhook (raw body, before `express.json()`) → `express.json({ limit: '50mb' })` → routes → error middleware
+- **`src/app.js`** — Middleware stack: helmet → **compression** → rate limiters → CORS → Stripe webhook (raw body, before `express.json()`) → `express.json({ limit: '50mb' })` → routes → error middleware
 
 ### Rate Limiting
 
@@ -125,7 +125,7 @@ Allowed: `localhost:5173`, `localhost:3000`, `localhost:8081`, `localhost:19006`
 
 | File | Purpose |
 |---|---|
-| `middleware/authMiddleware.js` | `protect` (verify JWT, attach `req.user`), `restrictTo(...roles)` (RBAC) |
+| `middleware/authMiddleware.js` | `protect` (verify JWT, look up user via `userCache` then DB, attach `req.user`), `restrictTo(...roles)` (RBAC) |
 | `middleware/errorMiddleware.js` | Global error handler — formats AppError and Mongoose errors into consistent JSON |
 | `middleware/notFound.js` | 404 handler for unmatched routes |
 
@@ -138,20 +138,27 @@ Allowed: `localhost:5173`, `localhost:3000`, `localhost:8081`, `localhost:19006`
 | `utils/email.js` | `sendEmail(to, subject, text, html)` via Resend |
 | `utils/notification.js` | `notifyAdmins(title, message, type)` — creates Notification records for all admins |
 | `utils/prompt.js` | Prompt templates for AI grading |
+| `utils/userCache.js` | In-memory LRU for authenticated User docs — 30s TTL, max 1000 entries. `getCachedUser/setCachedUser/invalidateUserCache`. Invalidated on every wallet write and on admin/user mutations so polling screens stop hammering MongoDB. |
+| `utils/pagination.js` | `parsePagination(req)` returns `{page, limit, skip}` if `?page` provided (else `null` for back-compat). `buildPaginationMeta(page, limit, total)` builds the response metadata. Default limit 20, clamped to [1, 50]. |
 | `services/ai.service.js` | `classifyProduct(imageBase64, mimeType)` — Gemini 1.5 Flash grading (N/A/C/B/A) |
 | `services/auth.service.js` | `signToken(id)`, `signRefreshToken(id)`, `createSendToken(user, statusCode, res)` |
-| `services/wallet.service.js` | Wallet credit/debit and escrow management |
+| `services/wallet.service.js` | Wallet credit/debit and escrow management. Calls `invalidateUserCache(userId)` after every successful balance update. |
+| `socket/index.js` | Socket.io server. Every authenticated socket auto-joins `user:${userId}` room for personal events. |
+| `socket/emit.js` | `emitOrderChanged(order, { reason? })` — fans an `order_changed` event out to buyer / farmer / logistics user rooms. Best-effort; no-ops if io isn't initialised. |
 | `config/db.js` | Mongoose connection with reconnection logic |
 | `config/logger.js` | Winston logger (info/error levels) |
 
 ### Socket.io (`src/socket/index.js`)
 
 ```
-Connection → JWT verification → DB user lookup
-  join_order  (orderId)   → join room `order:${orderId}` (buyer + logistics)
-  update_location         → logistics broadcasts {latitude, longitude, timestamp}
-  driver_location         → emitted to all room members
-  disconnect              → cleanup
+Connection → JWT verification → DB user lookup → auto-join `user:${userId}` room
+  join_order      (orderId)  → also join room `order:${orderId}` (buyer + logistics)
+  update_location            → logistics broadcasts {latitude, longitude, timestamp}
+  driver_location            → emitted to all order-room members
+  order_status_updated       → emitted to order room on every status change (tracking screens)
+  order_changed              → emitted to all involved user rooms on every status change
+                               (orders LIST screens use this to refresh without polling)
+  disconnect                 → cleanup
 ```
 
 ---
@@ -384,9 +391,15 @@ All interface/type imports in admin page files **must** use `import type { Foo }
 ### Product Listing & AI Grading
 - Farmers upload product with images (Base64, up to 50 MB via express.json limit)
 - Product creation is blocked with 403 if farmer is not approved
-- On create, product status set to `pending_ai`, background job calls Gemini 1.5 Flash
-- AI assigns grade: N/A / C / B / A — visible to buyers as a badge
-- Products cycle through: `pending_ai` → `active` (or `rejected` by AI)
+- On create, product status set to `pending_ai`, background job (`processProductAI`) calls Gemini 2.0 Flash
+- AI assigns grade: `Grade A` (Premium) / `Grade B` (Average) / `Grade C` (Poor), or rejects as not-a-crop (`N/A`)
+- Three terminal states from `pending_ai`:
+  - **`active`** — graded successfully; visible to buyers with the grade badge
+  - **`rejected`** — image is not a crop; farmer sees a rejection notification, listing stays hidden
+  - **`ai_failed`** — Gemini API call errored (quota, network, auth, etc.); listing stays hidden, farmer sees an "AI Grading Failed — Try Again" notification
+- **Retry flow:** On `ai_failed`, the farmer's My Products screen shows an orange-bordered card with the failure reason and a "Try Again" button. Tapping it calls `POST /products/:id/retry-ai`, which resets status to `pending_ai` and re-runs the background scan. The button shows "Retrying…" while the request is in flight.
+- The `aiError` field on the product holds the last truncated Gemini error message and is cleared on a successful grade or rejection.
+- **Dev mock:** When `GEMINI_API_KEY` is not set in development, the AI service returns a random mock grade (Grade A/B/C) so devs without a key can still test. When the key IS set and the call fails, the real error propagates so the `ai_failed` path is testable.
 
 ### Marketplace (Buyer)
 - Browse by category (vegetables, fruits, grains, dairy, livestock, other)
@@ -466,7 +479,10 @@ All interface/type imports in admin page files **must** use `import type { Foo }
   docReviewNote: String,
   timestamps
 }
-// Index: location (2dsphere, sparse)
+// Indexes:
+//   email (unique, auto from schema)
+//   location (2dsphere, sparse)
+//   role + isVerified  — powers GET /users/top-farmers and admin role filters
 ```
 
 ### Product
@@ -478,12 +494,25 @@ All interface/type imports in admin page files **must** use `import type { Foo }
   pricePerUnit, unit: 'kg' | 'ton' | 'liter' | 'piece' | 'dozen',
   availableQuantity,
   images: [String],   // Base64 data URIs
-  status: 'active' | 'sold_out' | 'hidden' | 'pending_ai' | 'rejected',
-  aiGrade: 'N/A' | 'C' | 'B' | 'A',
+  status: 'active' | 'sold_out' | 'hidden' | 'pending_ai' | 'ai_failed' | 'rejected',
+  rejectionReason,    // Set when status='rejected' (e.g., "Image 1 does not appear to be a crop photo.")
+  aiError,            // Set when status='ai_failed' — last Gemini error message (truncated to 200 chars)
+  aiGrade: 'N/A' | 'Grade C' | 'Grade B' | 'Grade A',
   rating, ratingsQuantity,
   timestamps
 }
+// Indexes:
+//   farmer + status
+//   title/description/category (text)
+//   status + createdAt:-1  — marketplace browse (GET /products)
 ```
+
+**Status transitions:**
+- `pending_ai` → `active` (Gemini graded the image successfully)
+- `pending_ai` → `rejected` (image is not a crop, digit '0' from Gemini)
+- `pending_ai` → `ai_failed` (Gemini API call threw — network/quota/auth/model error)
+- `ai_failed` → `pending_ai` (farmer tapped "Try Again" via the retry endpoint)
+- Only `active` products are visible in the public marketplace. `pending_ai`, `ai_failed`, and `rejected` are visible only to the owning farmer on My Products.
 
 ### Order
 ```javascript
@@ -498,6 +527,9 @@ All interface/type imports in admin page files **must** use `import type { Foo }
   disputeReason, cancelReason,
   timestamps
 }
+// Indexes:
+//   buyer + status, farmer + status, logisticsProvider + status
+//   status + createdAt:-1  — GET /orders/available and admin disputes
 ```
 
 ### Bid
@@ -508,6 +540,9 @@ All interface/type imports in admin page files **must** use `import type { Foo }
   status: 'pending' | 'accepted' | 'rejected',
   timestamps
 }
+// Indexes:
+//   order + logisticsProvider (unique) — prevents duplicate bids
+//   logisticsProvider + createdAt:-1   — GET /bids/my (My Bids screen)
 ```
 
 ### Transaction (Escrow)
@@ -541,10 +576,13 @@ All interface/type imports in admin page files **must** use `import type { Foo }
 {
   user: ref(User), amount,
   method: 'jazzcash' | 'easypaisa' | 'bank_transfer' | 'stripe',
-  paymentProof,   // Base64 screenshot
+  paymentProof,   // Base64 screenshot OR Stripe PaymentIntent ID
   status: 'pending' | 'approved' | 'rejected',
   adminNotes, timestamps
 }
+// Indexes:
+//   paymentProof         — Stripe webhook lookups (hot path on every checkout)
+//   user + createdAt:-1  — "My deposits" view
 ```
 
 ### WithdrawalRequest
@@ -576,8 +614,10 @@ All interface/type imports in admin page files **must** use `import type { Foo }
   targetId: ObjectId,
   rating: 1–5, comment,
   timestamps
-  // Unique index: reviewer + targetId
 }
+// Indexes:
+//   reviewer + targetId + targetModel (unique)  — one review per (user, target)
+//   targetId + targetModel + createdAt:-1       — GET /reviews/:targetId listing
 ```
 
 ---
@@ -603,24 +643,25 @@ All routes prefixed with `/api/v1`.
 
 | Method | Path | Access | Description |
 |---|---|---|---|
-| GET | `/` | Public | All active products (optional query: `category`, `search`, `sort`) |
-| GET | `/my-products` | Farmer | Farmer's own products |
-| GET | `/:id` | Public | Product detail |
+| GET | `/` | Public | All active products. Filters: `category`, `search`, `sort`, `pricePerUnit[gte/lte]`. Lists return only the first image (`$slice: 1` at DB level). **Opt-in pagination** via `?page=N&limit=M` (default 20, max 50) — adds a `pagination: { page, limit, total, totalPages, hasMore }` object next to `data`. Without `?page`, returns everything (back-compat). |
+| GET | `/my-products` | Farmer | Farmer's own products. Same `$slice: 1` projection and opt-in `?page&limit` as above. |
+| GET | `/:id` | Public | Product detail. Returns full image array (no slice). |
 | POST | `/` | Farmer (approved) | Create product. Blocked with 403 if `docReviewStatus` is not `approved`/`not_required`. |
 | PATCH | `/:id` | Farmer (owner) | Update product |
+| POST | `/:id/retry-ai` | Farmer (owner) / Admin | Retry AI grading. Only valid when product status is `ai_failed`. Resets status to `pending_ai` and re-runs the background scan. Returns 400 for any other status, 400 if no images on the product. |
 | DELETE | `/:id` | Farmer (owner) / Admin | Delete product |
 
 ### Orders (`/orders`)
 
 | Method | Path | Access | Description |
 |---|---|---|---|
-| POST | `/` | Buyer | Create order, locks escrow |
-| GET | `/` | Buyer/Farmer/Logistics | My orders (up to 50 flat, no pagination) |
-| GET | `/available` | Logistics | Orders in `bidding` status near provider |
-| GET | `/:id` | Order parties | Order detail |
-| PATCH | `/:id/status` | Order parties | Update status |
-| PATCH | `/:id/cancel` | Buyer | Cancel order |
-| PATCH | `/:id/dispute` | Buyer | Raise dispute |
+| POST | `/` | Buyer | Create order, locks escrow. Emits `order_changed` to buyer + farmer rooms. |
+| GET | `/` | Buyer/Farmer/Logistics | My orders. Populated `product.images` trimmed to first via `$slice: 1`. **Opt-in pagination** `?page=N&limit=M` (default 20, max 50). Without `?page`, falls back to hard cap of 50 (preserves old behavior). Paged responses include a `pagination` object. |
+| GET | `/available` | Logistics | Orders in `paid`/`bidding` status with no assigned logistics. Same `$slice` projection and opt-in `?page&limit` as above. |
+| GET | `/:id` | Order parties | Order detail. Full product images and proof photos returned. |
+| PATCH | `/:id/status` | Order parties | Update status. Emits `order_changed` to all involved user rooms + `order_status_updated` to the order room. |
+| PATCH | `/:id/cancel` | Buyer | Cancel order. Emits `order_changed` after the escrow refund transaction commits. |
+| PATCH | `/:id/dispute` | Buyer | Raise dispute. Emits `order_changed`. |
 
 ### Bids
 
@@ -712,18 +753,22 @@ All routes prefixed with `/api/v1`.
 
 ### Connection
 
-Client connects with `auth: { token: JWT }`. Server verifies token, looks up user in DB, rejects on failure.
+Client connects with `auth: { token: JWT }`. Server verifies the token, looks up the user in DB, then auto-joins the socket to the personal room `user:${userId}`. Rejection on auth failure.
 
 ### Events
 
 | Event | Direction | Payload | Purpose |
 |---|---|---|---|
-| `join_order` | Client → Server | `{ orderId }` | Join delivery tracking room |
-| `update_location` | Client → Server | `{ latitude, longitude, timestamp }` | Logistics broadcasts GPS |
+| `join_order` | Client → Server | `{ orderId }` | Join delivery tracking room `order:${orderId}` |
+| `update_location` | Client → Server | `{ orderId, latitude, longitude }` | Logistics broadcasts GPS |
 | `driver_location` | Server → Client | `{ latitude, longitude, timestamp }` | Emitted to all in `order:${orderId}` room |
+| `order_status_updated` | Server → Client | `{ orderId, status }` | Emitted to `order:${orderId}` room — TRACKING screens listen |
+| `order_changed` | Server → Client | `{ orderId, status, reason? }` | Emitted to buyer / farmer / logistics user rooms on every status change (create, status update, cancel, dispute, bid accepted). LIST screens listen via `socketService.onOrderChanged(cb)` to refresh without polling. |
 | `disconnect` | — | — | Socket cleanup |
 
 **Critical:** The socket is a shared singleton. Never call `socketService.disconnect()` in component cleanup — it kills the connection for all other consumers. Only remove event listeners or location watchers.
+
+**Backend emit points for `order_changed`:** `createOrder`, `updateOrderStatus`, `cancelOrder`, `disputeOrder` (order.controller); `createBid` when transitioning to bidding, `acceptBid` (bid.controller); `updateOrderStatusAdmin`, `resolveDispute` (admin.controller). All wrapped in `try/catch` so socket failures never break the HTTP response.
 
 ---
 
@@ -812,6 +857,24 @@ useFocusEffect(useCallback(() => {
 }, []));
 ```
 
+For order LIST screens, prefer the Socket.io push pattern instead (no polling needed):
+```typescript
+useEffect(() => {
+  const off = socketService.onOrderChanged(() => refetch());
+  return off;
+}, []);
+```
+The backend emits `order_changed` to each involved user's room on every status change. See [Real-time](#real-time-socketio).
+
+### User Cache Invalidation
+The auth middleware caches `User` docs for 30s (in-memory LRU, max 1000 entries) to avoid DB hits on every polled request. Any controller that mutates a user MUST call `invalidateUserCache(userId)` so the next request reads fresh state. Currently called from `wallet.service.updateBalance`, all `admin.controller` user mutations, `user.controller` profile/vehicle/online updates, and `auth.controller.resubmitDocs`.
+
+### List Endpoint Projection
+List endpoints (`GET /products`, `GET /products/my-products`, admin product list, `GET /orders`, `GET /orders/available`) trim `images` to the first element using MongoDB `$slice: 1` AT THE DATABASE LEVEL — the rest of the Base64 blob never leaves Mongo. Detail endpoints (`GET /products/:id`, `GET /orders/:id`) return the full image array.
+
+### Opt-In Pagination
+List endpoints accept optional `?page=N&limit=M` (default limit 20, clamped to [1, 50]). When `?page` is absent the endpoint returns everything (back-compat). When present, the response includes a `pagination: { page, limit, total, totalPages, hasMore }` object. Helper: `parsePagination(req)` returns `{ page, limit, skip } | null`.
+
 ### User ID Field
 The `id` field (not `_id`) is always used on the client. The backend's `toJSON` virtual maps `_id` → `id`.
 
@@ -840,3 +903,113 @@ All interface/type imports in admin pages must use `import type { Foo }`. Vite 8
 | Logistics earnings history | No per-delivery breakdown — would need new endpoint or schema field |
 | Admin account bootstrap | No seed admin user. Create via Node.js script directly against MongoDB (register endpoint blocks `role: admin`) |
 | DB re-seed | `seed.js` seeds 7 users (5 farmers + 2 buyers, password `password123`) and 50 products. Run `node src/seed.js` from `backend/` with correct `MONGO_URI` |
+| Cloudinary migration (fix #7) | Deferred. Images still stored as Base64 in MongoDB. List endpoints already trim via `$slice: 1` (fix #4) so the worst payloads are gone, but storage and DB document sizes will still bloat over time. Needs Cloudinary account + one-time migration script for existing data + coordinated backend/mobile/admin changes |
+| Mobile screens still poll | Backend pushes `order_changed` via socket (fix #6) but no mobile LIST screen subscribes yet. Adoption is a one-line `useEffect` per screen — see Auto-Refresh Pattern in [Key Conventions](#key-conventions) |
+| Mobile pagination not adopted | Backend supports opt-in `?page&limit` (fix #5) but no mobile screen passes it yet. Current data volume (14 products / 39 orders) doesn't justify infinite scroll yet — revisit when lists grow |
+
+---
+
+## Project Cleanup History
+
+### 2026-05-20 — Backend performance pass (fixes #1–#6)
+
+Six surgical backend performance improvements landed in one session. All are additive and backward-compatible — no existing mobile screen had to change. The Cloudinary migration (fix #7) was deferred.
+
+**Fix #1 — gzip compression**
+- New npm dep: `compression`
+- Wired in `backend/src/app.js` directly after `helmet`, before rate limiters / routes
+- Effect: JSON responses shrink ~60–80% on the wire (every list endpoint benefits)
+
+**Fix #2 — MongoDB indexes on query-hot fields** (6 new indexes, all additive)
+| Model | New index | Backs which query |
+|---|---|---|
+| Product | `status:1, createdAt:-1` | `GET /products` marketplace browse |
+| Order | `status:1, createdAt:-1` | `GET /orders/available`, admin disputes |
+| Bid | `logisticsProvider:1, createdAt:-1` | `GET /bids/my` |
+| User | `role:1, isVerified:1` | `GET /users/top-farmers`, admin role filter |
+| DepositRequest | `paymentProof:1` | Stripe webhook lookup on every checkout |
+| DepositRequest | `user:1, createdAt:-1` | "My deposits" view |
+| Review | `targetId:1, targetModel:1, createdAt:-1` | `GET /reviews/:targetId` |
+
+Mongoose `autoIndex` is on, so indexes build in the background on next deploy (no collection lock).
+
+**Fix #3 — In-memory User cache for the auth middleware**
+- New `backend/src/utils/userCache.js` — Map-based LRU, 30s TTL, cap 1000 entries, plain-object storage (lean fetch), restores the `id` virtual for downstream `req.user.id` reads
+- `protect` middleware now: check cache → on miss, `User.findById(...).select('+isActive').lean()` → cache it
+- Invalidation hooks (9 in total) call `invalidateUserCache(userId)` so suspensions, wallet writes, profile updates, doc approvals, etc. propagate immediately. See `services/wallet.service.js`, `controllers/admin.controller.js` (`toggleVerify`/`toggleSuspend`/`deleteUser`/`reviewFarmerDocs`), `controllers/user.controller.js` (`updateMe`/`updateVehicleInfo`/`toggleOnlineStatus`), `controllers/auth.controller.js` (`resubmitDocs`)
+- A user polling 3 screens at 30s intervals went from ~6 `User.findById` queries/min to ~2/min
+
+**Fix #4 — List-view image projection (`$slice: 1`)**
+- Marketplace, my-products, admin product list, my-orders, available orders now trim `images` to a single element AT THE DATABASE LEVEL via Mongoose `$slice` projection — the unused Base64 blobs never leave MongoDB
+- Detail endpoints (`GET /products/:id`, `GET /orders/:id`) untouched — they still return all images
+- Verified live: marketplace returned 6 products each capped at 1 image; populated order products same
+
+**Fix #5 — Opt-in pagination**
+- New `backend/src/utils/pagination.js` — `parsePagination(req)` + `buildPaginationMeta(page, limit, total)`
+- Wired into `getAllProducts`, `getMyProducts`, `getMyOrders`, `getAvailableOrders`
+- Behavior: no `?page` → returns everything (preserves old behavior). `?page=N&limit=M` → response carries a `pagination` object next to `data`. Limit defaults to 20, clamps to 50, page clamps to ≥1
+- Mobile remains untouched; can adopt with one `useInfiniteQuery` change per screen when ready
+
+**Fix #6 — Push `order_changed` via Socket.io**
+- Backend `socket/index.js`: every authenticated socket auto-joins `user:${userId}` on connect
+- New `backend/src/socket/emit.js` exports `emitOrderChanged(order, { reason? })` — fans event out to buyer / farmer / logistics user rooms (dedup'd, null-safe, best-effort)
+- Wired into 8 places: order create, status update, cancel, dispute (order.controller); first bid (paid→bidding) + bid accepted (bid.controller); admin status override + dispute resolution (admin.controller)
+- Existing `order_status_updated` emit to `order:${id}` room (used by tracking screens) preserved untouched
+- Mobile `services/socket.service.ts` gets a new `onOrderChanged(cb)` listener method (purely additive). List screens can drop polling by subscribing — no screen changed in this session
+- Verified end-to-end with a real Socket.io server + client: events reach the right user room, do NOT leak to other users
+
+**Fix #7 — Deferred**
+Cloudinary image migration was scoped, planned, and deferred. Discussion notes are in the chat history; no code changed. Touches backend + mobile + admin + requires a one-time migration script for existing Base64 data, so it needs its own focused session.
+
+**Files added this pass**
+- `backend/src/utils/userCache.js`
+- `backend/src/utils/pagination.js`
+- `backend/src/socket/emit.js`
+
+**Files modified this pass**
+- `backend/src/app.js` (+ compression)
+- `backend/src/models/Product.js`, `Order.js`, `Bid.js`, `User.js`, `DepositRequest.js`, `Review.js` (indexes)
+- `backend/src/middleware/authMiddleware.js` (cache integration)
+- `backend/src/services/wallet.service.js` (cache invalidation)
+- `backend/src/controllers/product.controller.js`, `order.controller.js`, `bid.controller.js`, `admin.controller.js`, `user.controller.js`, `auth.controller.js` (cache invalidation, `$slice` projection, pagination, socket emits)
+- `backend/src/socket/index.js` (auto-join user room)
+- `DigitalKisan/services/socket.service.ts` (new `onOrderChanged` method)
+
+**Files NOT touched**
+- All mobile screens (zero UI risk)
+- Admin panel (no changes)
+- Mobile service files for products / orders (existing methods unchanged)
+- Schema field definitions on any model
+
+---
+
+### 2026-05-19 — Repository tidy-up
+
+Removed stale documentation and ad-hoc debug scripts. All content from the deleted docs is captured here in `PROJECT.md` and in `CLAUDE.md`.
+
+**Removed from root:**
+| File | Reason |
+|---|---|
+| `GEMINI.md` | Empty 0-byte placeholder |
+| `PROJECT_INIT.md` | Initial project reference (2026-05-16) — content merged into this file |
+| `PROJECT_CONTINUE.md` | Mid-development status doc (2026-05-15) — stale snapshot |
+| `SESSION_HANDOFF.md` | Session handoff note (2026-05-12) — captures one specific session, no longer relevant |
+| `package-lock.json` | Orphan 92-byte file with no `package.json` or `node_modules` at root |
+
+**Removed from `backend/`** — ad-hoc debug scripts not referenced by any `npm` script or `src/` file:
+- `test_ai_low_quality.js`, `test_ai_prompt.js`, `test_gemini.js` — Gemini AI prompt testing during development
+- `test_auth.js`, `test_register.js`, `test_prod_login.js` — Auth endpoint smoke tests
+- `test_conn.js`, `test_conn_dns.js`, `test_dns.js`, `test_prod_db.js` — MongoDB connection debugging
+- `test_product.js` — Product endpoint smoke test
+- `test_resend.js` — Resend email service test
+- `test_all.js` — Combined runner for the above
+- `test_output.log` — Captured output from one of those runs
+
+**Kept:**
+- `CLAUDE.md` — Active Claude Code project instructions (updated to reference `PROJECT.md`)
+- `app-home.png` — Project screenshot
+- `admin/README.md`, `backend/README.md`, `DigitalKisan/README.md` — Sub-project READMEs
+- `DigitalKisan/.expo/README.md` — Expo auto-generated, ignored by tooling
+- `docs/superpowers/` — Feature design specs and implementation plans (still referenced by the brainstorming workflow)
+
+**No proper test suite exists** for any sub-project. There are no `*.test.js`, `*.spec.js`, Jest, or Vitest configs in `backend/`, `DigitalKisan/`, or `admin/`. The `npm test` scripts are absent from all three `package.json` files. If automated tests are added later, they should live in `__tests__/` or `tests/` folders adjacent to the source they cover, and the package.json `scripts.test` should be wired up.

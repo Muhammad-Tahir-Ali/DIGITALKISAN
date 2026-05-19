@@ -64,7 +64,24 @@
       "Bash(Test-Path *)",
       "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\Muhammad Tahir\\\\Desktop\\\\DIGITAL KISAN\" -Force)",
       "Bash(Select-Object Name, Mode)",
-      "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\Muhammad Tahir\\\\Desktop\\\\DIGITAL KISAN\" -Force | Select-Object Name, @{Name=\"Type\"; Expression={if \\($_.PSIsContainer\\) {\"DIR\"} else {\"FILE\"}}})"
+      "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\Muhammad Tahir\\\\Desktop\\\\DIGITAL KISAN\" -Force | Select-Object Name, @{Name=\"Type\"; Expression={if \\($_.PSIsContainer\\) {\"DIR\"} else {\"FILE\"}}})",
+      "Skill(update-config)",
+      "PowerShell(cd \"C:\\\\Users\\\\Muhammad Tahir\\\\Desktop\\\\DIGITAL KISAN\"; $c = Get-Content 'PROJECT.md' -Raw -ErrorAction SilentlyContinue; if \\($c\\) { $out = @{hookSpecificOutput=@{hookEventName='SessionStart';additionalContext=\"=== PROJECT.md ===`n$c\"}} | ConvertTo-Json -Compress -Depth 5; $out.Substring\\(0, [Math]::Min\\(200, $out.Length\\)\\) })",
+      "PowerShell($s = Get-Content \"C:\\\\Users\\\\Muhammad Tahir\\\\Desktop\\\\DIGITAL KISAN\\\\.claude\\\\settings.local.json\" -Raw | ConvertFrom-Json; $s.hooks.SessionStart[0].hooks[0].command)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$c = Get-Content 'PROJECT.md' -Raw -ErrorAction SilentlyContinue; if ($c) { @{hookSpecificOutput=@{hookEventName='SessionStart';additionalContext=\"=== PROJECT.md ===`n$c\"}} | ConvertTo-Json -Compress -Depth 5 }",
+            "shell": "powershell",
+            "statusMessage": "Loading PROJECT.md context..."
+          }
+        ]
+      }
     ]
   }
 }
