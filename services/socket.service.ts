@@ -65,4 +65,26 @@ export const socketService = {
     socket?.on('order_status_updated', handler);
     return () => { socket?.off('order_status_updated', handler); };
   },
+
+  /**
+   * Fires whenever one of the current user's orders changes (created, status
+   * change, bid accepted, cancelled, disputed, etc.). The backend emits this
+   * to the personal `user:${userId}` room — every authenticated socket auto-
+   * joins that room on connect.
+   *
+   * Use this on orders LIST screens to replace 30s polling. Returns an
+   * unsubscribe function.
+   *
+   *   useEffect(() => {
+   *     const off = socketService.onOrderChanged(() => refetch());
+   *     return off;
+   *   }, []);
+   */
+  onOrderChanged(
+    cb: (data: { orderId: string; status: string; reason?: string }) => void
+  ) {
+    if (!socket?.connected) this.connect();
+    socket?.on('order_changed', cb);
+    return () => { socket?.off('order_changed', cb); };
+  },
 };
