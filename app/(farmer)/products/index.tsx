@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity, StyleSheet,
-  RefreshControl, Alert, Platform,
+  RefreshControl, Alert, Platform, ActivityIndicator,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
@@ -9,6 +9,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '@/constants/colors';
 import { SkeletonLoader, LazyImage } from '@/components/ui';
 import productService, { Product } from '@/services/product.service';
+import { useAuthStore } from '@/store/authStore';
+import authService from '@/services/auth.service';
 
 const FILTER_TABS = ['All', 'Active', 'Low Stock', 'Out of Stock'];
 const CATEGORIES = ['All', 'grains', 'vegetables', 'fruits', 'dairy', 'livestock', 'other'];
@@ -16,6 +18,8 @@ const CATEGORIES = ['All', 'grains', 'vegetables', 'fruits', 'dairy', 'livestock
 export default function MyProductsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const user = useAuthStore((s) => s.user);
+  const setUser = useAuthStore((s) => s.setUser);
   const [activeTab, setActiveTab] = useState('All');
   const [activeCategory, setActiveCategory] = useState('All');
   const [products, setProducts] = useState<Product[]>([]);
@@ -23,6 +27,7 @@ export default function MyProductsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [retryingId, setRetryingId] = useState<string | null>(null);
+  const [statusChecking, setStatusChecking] = useState(false);
 
   const fetchProducts = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -210,6 +215,67 @@ export default function MyProductsScreen() {
   };
 
   const filteredProducts = getFilteredProducts();
+
+  // ── Pending / Rejected guard ──────────────────────────────────────────────
+  const checkApprovalStatus = async () => {
+    setStatusChecking(true);
+    try {
+      const fresh = await authService.me();
+      setUser(fresh);
+    } catch {
+      Alert.alert('Error', 'Could not refresh status. Please try again.');
+    } finally {
+      setStatusChecking(false);
+    }
+  };
+
+  if (user?.docReviewStatus === 'pending_review') {
+    return (
+      <View style={[styles.root, styles.centered, { paddingTop: insets.top }]}>
+        <View style={styles.pendingIconWrap}>
+          <Feather name="clock" size={48} color="#D97706" />
+        </View>
+        <Text style={styles.pendingTitle}>Account Under Review</Text>
+        <Text style={styles.pendingDesc}>
+          Your documents are being reviewed by our team. You'll be able to list products once approved (usually within 24–48 hours).
+        </Text>
+        <TouchableOpacity
+          style={[styles.pendingRefreshBtn, statusChecking && { opacity: 0.6 }]}
+          onPress={checkApprovalStatus}
+          disabled={statusChecking}
+        >
+          {statusChecking
+            ? <ActivityIndicator color="#fff" size="small" />
+            : <><Feather name="refresh-cw" size={16} color="#fff" /><Text style={styles.pendingRefreshBtnText}>Check Status</Text></>
+          }
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  if (user?.docReviewStatus === 'rejected') {
+    return (
+      <View style={[styles.root, styles.centered, { paddingTop: insets.top }]}>
+        <View style={[styles.pendingIconWrap, { backgroundColor: '#FEE2E2' }]}>
+          <Feather name="x-circle" size={48} color="#DC2626" />
+        </View>
+        <Text style={[styles.pendingTitle, { color: '#DC2626' }]}>Documents Rejected</Text>
+        <Text style={styles.pendingDesc}>
+          {user.docReviewNote
+            ? `Reason: ${user.docReviewNote}`
+            : 'Your documents were rejected. Please re-submit clear, readable photos.'}
+        </Text>
+        <TouchableOpacity
+          style={[styles.pendingRefreshBtn, { backgroundColor: '#DC2626' }]}
+          onPress={() => router.push('/(farmer)/resubmit-docs' as any)}
+        >
+          <Feather name="upload" size={16} color="#fff" />
+          <Text style={styles.pendingRefreshBtnText}>Re-submit Documents</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+  // ─────────────────────────────────────────────────────────────────────────
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
@@ -412,6 +478,22 @@ const styles = StyleSheet.create({
   },
   editBtn: { padding: 8, borderRightWidth: 1, borderRightColor: '#F1F5F9', backgroundColor: Colors.surface },
   deleteBtn: { padding: 8, backgroundColor: Colors.surface },
+
+  pendingIconWrap: {
+    width: 96, height: 96, borderRadius: 48,
+    backgroundColor: '#FEF3C7', alignItems: 'center', justifyContent: 'center', marginBottom: 20,
+  },
+  pendingTitle: { fontSize: 22, fontWeight: '900', color: Colors.textPrimary, marginBottom: 10, textAlign: 'center' },
+  pendingDesc: {
+    fontSize: 14, color: Colors.textSecondary, textAlign: 'center',
+    lineHeight: 21, marginBottom: 28, paddingHorizontal: 32,
+  },
+  pendingRefreshBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: Colors.primary, paddingHorizontal: 24, paddingVertical: 14,
+    borderRadius: 14,
+  },
+  pendingRefreshBtnText: { color: '#fff', fontWeight: '800', fontSize: 15 },
 
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 60 },
   errorText: { color: Colors.textSecondary, fontWeight: '700', textAlign: 'center', marginTop: 12, marginBottom: 16 },
