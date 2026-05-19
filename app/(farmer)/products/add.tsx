@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, ScrollView, Platform,
   Alert, KeyboardAvoidingView, StyleSheet, ActivityIndicator,
   InteractionManager, Animated, Image, Dimensions,
 } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -17,6 +17,7 @@ import { Button, LazyImage } from '@/components/ui';
 import { LinearGradient } from 'expo-linear-gradient';
 
 import productService from '@/services/product.service';
+import { useAuthStore } from '@/store/authStore';
 
 const MAX_IMAGES = 5;
 
@@ -39,6 +40,21 @@ export default function AddProductScreen() {
   const insets = useSafeAreaInsets();
   const { productId } = useLocalSearchParams<{ productId?: string }>();
   const isEditing = !!productId;
+
+  const user = useAuthStore((s) => s.user);
+
+  useFocusEffect(
+    useCallback(() => {
+      const status = user?.docReviewStatus;
+      if (status && status !== 'approved' && status !== 'not_required') {
+        Alert.alert(
+          'Account Pending Approval',
+          'Your account is pending admin approval. You cannot list products until your documents are reviewed.',
+          [{ text: 'OK', onPress: () => router.back() }]
+        );
+      }
+    }, [user?.docReviewStatus])
+  );
 
   const [selectedImages, setSelectedImages] = useState<string[]>([]);
   const [isSimulatingAI, setIsSimulatingAI] = useState(false);

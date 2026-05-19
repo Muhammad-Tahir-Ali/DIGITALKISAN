@@ -17,8 +17,9 @@ export interface Product {
   unit: string;
   availableQuantity: number;
   images: string[];
-  status: 'active' | 'sold_out' | 'hidden' | 'pending_ai' | 'rejected';
+  status: 'active' | 'sold_out' | 'hidden' | 'pending_ai' | 'ai_failed' | 'rejected';
   rejectionReason?: string;
+  aiError?: string;
   aiGrade?: 'N/A' | 'Grade C' | 'Grade B' | 'Grade A';
   rating: number;
   ratingsQuantity: number;
@@ -89,6 +90,15 @@ const productService = {
    */
   delete: async (id: string): Promise<void> => {
     await api.delete(`/products/${id}`);
+  },
+
+  /**
+   * Retry AI grading for a product whose previous grading failed.
+   * Only valid when product.status === 'ai_failed'.
+   */
+  retryAI: async (id: string): Promise<Product> => {
+    const { data } = await api.post(`/products/${id}/retry-ai`);
+    return data.data.product;
   },
 };
 

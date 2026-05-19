@@ -16,6 +16,9 @@ export interface RegisterPayload {
   password: string;
   phone: string;
   role: UserRole;
+  cnicFront?: string;
+  cnicBack?: string;
+  landDoc?: string;
 }
 
 export interface VerifyEmailPayload {
@@ -110,6 +113,17 @@ const authService = {
   }): Promise<AuthResponse> => {
     const { data } = await api.post<BackendAuthResponse>('/auth/reset-password', payload);
     return normalizeResponse(data);
+  },
+
+  /**
+   * Resubmit documents for review (CNIC front/back, land document)
+   */
+  resubmitDocs: async (payload: {
+    cnicFront: string;
+    cnicBack: string;
+    landDoc?: string;
+  }): Promise<void> => {
+    await api.post('/auth/resubmit-docs', payload);
   },
 
   /**

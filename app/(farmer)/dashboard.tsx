@@ -215,6 +215,29 @@ export default function FarmerDashboard() {
         </View>
       </View>
 
+      {/* ── DOC REVIEW STATUS BANNER ── */}
+        {user?.docReviewStatus === 'pending_review' && (
+          <View style={styles.docReviewBanner}>
+            <Feather name="clock" size={16} color="#92400e" />
+            <Text style={styles.docReviewBannerText}>
+              Account under review — you can explore the app but cannot list products until an admin approves your documents.
+            </Text>
+          </View>
+        )}
+        {user?.docReviewStatus === 'rejected' && (
+          <View style={styles.docRejectedBanner}>
+            <Feather name="alert-circle" size={16} color="#991b1b" />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.docRejectedBannerText}>
+                Documents rejected: {user.docReviewNote}
+              </Text>
+              <TouchableOpacity onPress={() => router.push('/(farmer)/resubmit-docs')}>
+                <Text style={styles.docResubmitLink}>Re-submit Documents →</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
       {/* ── 2. OVERVIEW CARDS ───────────────────────────────────── */}
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
@@ -510,4 +533,46 @@ const styles = StyleSheet.create({
   },
   reviewBannerTitle: { fontSize: 14, fontWeight: '800', color: '#14532D' },
   reviewBannerSub: { fontSize: 12, color: Colors.agri.sabz, fontWeight: '500', marginTop: 1 },
+
+  docReviewBanner: {
+    backgroundColor: '#fef3c7',
+    borderColor: '#f59e0b',
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 8,
+    marginHorizontal: 20,
+    marginBottom: 16,
+  },
+  docReviewBannerText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#92400e',
+    fontWeight: '500' as const,
+  },
+  docRejectedBanner: {
+    backgroundColor: '#fef2f2',
+    borderColor: '#ef4444',
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    flexDirection: 'row' as const,
+    alignItems: 'flex-start' as const,
+    gap: 8,
+    marginHorizontal: 20,
+    marginBottom: 16,
+  },
+  docRejectedBannerText: {
+    fontSize: 13,
+    color: '#991b1b',
+    fontWeight: '500' as const,
+    marginBottom: 4,
+  },
+  docResubmitLink: {
+    fontSize: 13,
+    color: Colors.primary,
+    fontWeight: '700' as const,
+  },
 });

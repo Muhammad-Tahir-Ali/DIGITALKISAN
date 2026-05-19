@@ -22,6 +22,7 @@ export default function MyProductsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [retryingId, setRetryingId] = useState<string | null>(null);
 
   const fetchProducts = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -41,6 +42,20 @@ export default function MyProductsScreen() {
   useFocusEffect(
     useCallback(() => { fetchProducts(); }, [fetchProducts])
   );
+
+  const handleRetryAI = async (id: string) => {
+    setRetryingId(id);
+    try {
+      const updated = await productService.retryAI(id);
+      setProducts(prev => prev.map(p => p._id === id ? { ...p, ...updated } : p));
+      Alert.alert('AI Grading Restarted', 'You will be notified when grading is finished.');
+    } catch (e: any) {
+      const msg = e?.response?.data?.message || 'Could not retry AI grading. Please try again.';
+      Alert.alert('Retry Failed', msg);
+    } finally {
+      setRetryingId(null);
+    }
+  };
 
   const handleDelete = async (id: string) => {
     const doDelete = async () => {
@@ -75,9 +90,11 @@ export default function MyProductsScreen() {
     const isOut = item.availableQuantity === 0 || item.status === 'sold_out';
     const isLow = item.availableQuantity > 0 && item.availableQuantity <= 50;
     const isHidden = item.status === 'hidden';
+    const isAiFailed = item.status === 'ai_failed';
+    const isRetrying = retryingId === item._id;
 
     return (
-      <View style={[styles.card, isHidden && styles.cardHidden]}>
+      <View style={[styles.card, isHidden && styles.cardHidden, isAiFailed && styles.cardFailed]}>
         <View style={styles.cardRow}>
           <View style={[styles.thumb, isHidden && styles.thumbHidden]}>
             {item.images && item.images.length > 0 ? (
@@ -100,6 +117,11 @@ export default function MyProductsScreen() {
               {item.status === 'pending_ai' && (
                 <View style={styles.badgePending}>
                   <Text style={styles.badgePendingText}>AI ⏳</Text>
+                </View>
+              )}
+              {item.status === 'ai_failed' && (
+                <View style={styles.badgeFailed}>
+                  <Text style={styles.badgeFailedText}>AI Failed ⚠️</Text>
                 </View>
               )}
               {item.status === 'rejected' && (
@@ -143,6 +165,28 @@ export default function MyProductsScreen() {
             </View>
           </View>
         </View>
+
+        {isAiFailed && (
+          <View style={styles.failedBanner}>
+            <View style={styles.failedBannerHeader}>
+              <Feather name="alert-triangle" size={14} color="#B45309" />
+              <Text style={styles.failedBannerTitle}>AI grading failed — not listed yet</Text>
+            </View>
+            {item.aiError ? (
+              <Text style={styles.failedBannerReason} numberOfLines={2}>
+                Reason: {item.aiError}
+              </Text>
+            ) : null}
+            <TouchableOpacity
+              style={[styles.retryAiBtn, isRetrying && { opacity: 0.6 }]}
+              onPress={() => handleRetryAI(item._id)}
+              disabled={isRetrying}
+            >
+              <Feather name="refresh-cw" size={14} color="#fff" />
+              <Text style={styles.retryAiBtnText}>{isRetrying ? 'Retrying…' : 'Try Again'}</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         <View style={styles.cardFooter}>
           <View style={styles.ratingRow}>
@@ -292,6 +336,26 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.04, shadowRadius: 6, elevation: 2,
   },
   cardHidden: { backgroundColor: '#F9FAFB', borderColor: '#E5E7EB' },
+  cardFailed: { borderColor: '#FDBA74', borderWidth: 1.5 },
+
+  failedBanner: {
+    marginTop: 12,
+    paddingVertical: 10, paddingHorizontal: 12,
+    borderRadius: 12,
+    backgroundColor: '#FFF7ED',
+    borderWidth: 1, borderColor: '#FED7AA',
+  },
+  failedBannerHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
+  failedBannerTitle: { fontSize: 12, fontWeight: '800', color: '#9A3412' },
+  failedBannerReason: { fontSize: 11, color: '#9A3412', marginBottom: 8, lineHeight: 16 },
+  retryAiBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    alignSelf: 'flex-start',
+    gap: 6,
+    backgroundColor: '#C2410C',
+    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10,
+  },
+  retryAiBtnText: { color: '#fff', fontSize: 12, fontWeight: '800' },
   cardRow: { flexDirection: 'row', gap: 12 },
   thumb: {
     width: 72, height: 72, borderRadius: 14,
@@ -311,6 +375,8 @@ const styles = StyleSheet.create({
 
   badgePending: { backgroundColor: '#FEF3C7', paddingHorizontal: 6, paddingVertical: 3, borderRadius: 6 },
   badgePendingText: { fontSize: 9, fontWeight: '800', color: '#92400E' },
+  badgeFailed: { backgroundColor: '#FFEDD5', paddingHorizontal: 6, paddingVertical: 3, borderRadius: 6 },
+  badgeFailedText: { fontSize: 9, fontWeight: '800', color: '#9A3412' },
   badgeRejected: { backgroundColor: '#FEE2E2', paddingHorizontal: 6, paddingVertical: 3, borderRadius: 6 },
   badgeRejectedText: { fontSize: 9, fontWeight: '800', color: '#991B1B' },
   badgeGrade: { paddingHorizontal: 6, paddingVertical: 3, borderRadius: 6, borderWidth: 1 },

@@ -11,6 +11,8 @@ export interface User {
   avatar?: string;
   isVerified: boolean;
   createdAt: string;
+  docReviewStatus?: 'not_required' | 'pending_review' | 'approved' | 'rejected';
+  docReviewNote?: string;
 }
 
 interface AuthState {

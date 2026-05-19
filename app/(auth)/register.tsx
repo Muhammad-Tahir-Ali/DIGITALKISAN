@@ -18,6 +18,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Feather } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
 import { Button, Input, PasswordInput } from '@/components/ui';
 import { Colors } from '@/constants/colors';
 import { useAuth } from '@/hooks/useAuth';
@@ -154,6 +155,11 @@ export default function RegisterScreen() {
         phone: data.phone,
         password: data.password,
         role: role as UserRole,
+        ...(isFarmer && {
+          cnicFront: data.cnicFront,
+          cnicBack: data.cnicBack,
+          landDoc: data.landDoc,
+        }),
       });
 
       if (__DEV__ && responseData && responseData.devCode) {
@@ -197,7 +203,27 @@ export default function RegisterScreen() {
     });
 
     if (!result.canceled) {
-      setValue(field, result.assets[0].uri);
+      const asset = result.assets[0];
+      const uri = asset.uri;
+      const mimeType = asset.mimeType || 'image/jpeg';
+
+      let base64Uri: string;
+      if (Platform.OS === 'web') {
+        const response = await fetch(uri);
+        const blob = await response.blob();
+        base64Uri = await new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.readAsDataURL(blob);
+        });
+      } else {
+        const b64 = await FileSystem.readAsStringAsync(uri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        base64Uri = `data:${mimeType};base64,${b64}`;
+      }
+
+      setValue(field, base64Uri);
     }
   };
 
