@@ -5,7 +5,7 @@ import {
   ActivityIndicator, Alert, Modal, TextInput, ScrollView,
   Dimensions, Animated,
 } from 'react-native';
-import MapView, { Marker, Polyline } from 'react-native-maps';
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { Feather } from '@expo/vector-icons';
 import { Colors } from '@/constants/colors';
@@ -355,6 +355,7 @@ export default function LogisticsMap() {
       {/* MAP */}
       <MapView
         ref={mapRef}
+        provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
         style={StyleSheet.absoluteFillObject}
         initialRegion={PAKISTAN_REGION}
         onPress={handleMapPress}

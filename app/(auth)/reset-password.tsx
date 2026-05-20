@@ -46,7 +46,7 @@ export default function ResetPasswordScreen() {
 
       const navigateHome = () => {
         if (role === 'farmer') router.replace('/(farmer)/dashboard');
-        else if (role === 'logistics') router.replace('/(logistics)/dashboard');
+        else if (role === 'logistics') router.replace('/(logistics)/map');
         else router.replace('/(buyer)/home');
       };
 

@@ -101,6 +101,11 @@ export default function LogisticsLayout() {
         name="vehicle"
         options={{ href: null }}
       />
+      {/* Withdrawal screen — accessed from Earnings tab */}
+      <Tabs.Screen
+        name="withdraw"
+        options={{ href: null }}
+      />
     </Tabs>
   );
 }

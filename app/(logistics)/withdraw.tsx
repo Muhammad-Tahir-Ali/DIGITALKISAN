@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, TextInput,
-  ScrollView, Alert, ActivityIndicator,
+  ScrollView, Alert, ActivityIndicator, Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useForm, Controller } from 'react-hook-form';
@@ -29,7 +29,7 @@ const METHODS = [
   { id: 'bank_transfer' as const, label: 'Bank Transfer', color: '#0EA5E9' },
 ];
 
-export default function FarmerWithdrawalScreen() {
+export default function LogisticsWithdrawalScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [method, setMethod] = React.useState<'jazzcash' | 'easypaisa' | 'bank_transfer'>('jazzcash');
@@ -53,7 +53,6 @@ export default function FarmerWithdrawalScreen() {
   const onSubmit = async (data: WithdrawForm) => {
     const requested = parseFloat(data.amount);
 
-    // Guard against overdraw if we know the balance
     if (availableBalance !== null && requested > availableBalance) {
       Alert.alert(
         'Insufficient Balance',
@@ -80,7 +79,7 @@ export default function FarmerWithdrawalScreen() {
       );
       setSubmitted(true);
     } catch (error: any) {
-      Alert.alert('Error', error?.response?.data?.message ?? 'Failed to submit withdrawal request.');
+      Alert.alert('Error', error?.response?.data?.message ?? 'Failed to submit withdrawal request. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -101,10 +100,10 @@ export default function FarmerWithdrawalScreen() {
         </Text>
         <TouchableOpacity
           style={styles.successBtn}
-          onPress={() => router.replace('/(farmer)/wallet')}
+          onPress={() => router.replace('/(logistics)/earnings')}
           activeOpacity={0.85}
         >
-          <Text style={styles.successBtnText}>Back to Wallet</Text>
+          <Text style={styles.successBtnText}>Back to Earnings</Text>
         </TouchableOpacity>
       </View>
     );
@@ -112,8 +111,9 @@ export default function FarmerWithdrawalScreen() {
 
   return (
     <View style={styles.container}>
+      {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-        <TouchableOpacity onPress={() => router.replace('/(farmer)/wallet')} style={styles.backBtn}>
+        <TouchableOpacity onPress={() => router.replace('/(logistics)/earnings')} style={styles.backBtn}>
           <Feather name="arrow-left" size={20} color={Colors.textPrimary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Withdraw Earnings</Text>
@@ -123,7 +123,7 @@ export default function FarmerWithdrawalScreen() {
 
         {/* Available Balance chip */}
         <View style={styles.balanceChip}>
-          <Feather name="credit-card" size={14} color={Colors.primary} />
+          <Feather name="credit-card" size={14} color="#1565C0" />
           {balanceLoading ? (
             <Text style={styles.balanceChipText}>Loading balance…</Text>
           ) : availableBalance !== null ? (
@@ -135,6 +135,7 @@ export default function FarmerWithdrawalScreen() {
           )}
         </View>
 
+        {/* Amount */}
         <View style={styles.section}>
           <Text style={styles.label}>Withdrawal Amount</Text>
           <Controller
@@ -165,13 +166,14 @@ export default function FarmerWithdrawalScreen() {
           {errors.amount && <Text style={styles.fieldError}>{errors.amount.message}</Text>}
         </View>
 
+        {/* Payment Method */}
         <View style={styles.section}>
           <Text style={styles.label}>Payment Method</Text>
           <View style={styles.methodGrid}>
             {METHODS.map((m) => (
               <TouchableOpacity
                 key={m.id}
-                style={[styles.methodBtn, method === m.id && { borderColor: m.color, backgroundColor: `${m.color}08` }]}
+                style={[styles.methodBtn, method === m.id && { borderColor: m.color, backgroundColor: `${m.color}10` }]}
                 onPress={() => setMethod(m.id)}
               >
                 <View style={[styles.dot, method === m.id && { backgroundColor: m.color }]} />
@@ -181,8 +183,10 @@ export default function FarmerWithdrawalScreen() {
           </View>
         </View>
 
+        {/* Account Details */}
         <View style={styles.section}>
           <Text style={styles.label}>Account Details</Text>
+
           <Controller
             control={control}
             name="accountTitle"
@@ -231,25 +235,36 @@ export default function FarmerWithdrawalScreen() {
           )}
         </View>
 
-        <View style={styles.disclaimer}>
-          <Feather name="info" size={16} color="#64748B" />
-          <Text style={styles.disclaimerText}>
-            Payouts are processed manually by our finance team within 24–48 hours.
-            Please ensure your account details are correct.
-          </Text>
+        {/* Info box */}
+        <View style={styles.infoBox}>
+          <Feather name="shield" size={16} color="#1565C0" />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.infoTitle}>Secure Manual Payout</Text>
+            <Text style={styles.infoText}>
+              Withdrawal requests are reviewed and approved by our admin team. Funds are transferred to your account within 24–48 hours after approval.
+            </Text>
+          </View>
         </View>
+
       </ScrollView>
 
-      <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
+      {/* Submit */}
+      <View style={[styles.footer, { paddingBottom: insets.bottom + (Platform.OS === 'ios' ? 108 : 88) }]}>
         <TouchableOpacity
           style={[styles.withdrawBtn, loading && { opacity: 0.7 }]}
-          onPress={handleSubmit(onSubmit)}
+          onPress={handleSubmit(onSubmit, () => {
+            Alert.alert('Missing Information', 'Please fill in all required fields before submitting.');
+          })}
           disabled={loading}
         >
-          {loading
-            ? <ActivityIndicator color="#fff" />
-            : <Text style={styles.withdrawBtnText}>Submit Request</Text>
-          }
+          {loading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <>
+              <Feather name="send" size={18} color="#fff" />
+              <Text style={styles.withdrawBtnText}>Submit Withdrawal Request</Text>
+            </>
+          )}
         </TouchableOpacity>
       </View>
     </View>
@@ -258,6 +273,7 @@ export default function FarmerWithdrawalScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
+
   header: {
     flexDirection: 'row', alignItems: 'center',
     paddingBottom: 20, paddingHorizontal: 24,
@@ -268,22 +284,24 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center', marginRight: 16,
   },
   headerTitle: { fontSize: 18, fontWeight: '900', color: Colors.textPrimary },
+
   content: { padding: 24, paddingBottom: 120 },
 
   balanceChip: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: Colors.primaryLight, borderRadius: 12,
+    backgroundColor: '#EFF6FF', borderRadius: 12,
     paddingHorizontal: 14, paddingVertical: 10, marginBottom: 28,
-    borderWidth: 1, borderColor: `${Colors.primary}30`,
+    borderWidth: 1, borderColor: '#BFDBFE',
   },
   balanceChipText: { fontSize: 13, fontWeight: '600', color: Colors.textSecondary },
-  balanceChipAmount: { fontWeight: '900', color: Colors.primary },
+  balanceChipAmount: { fontWeight: '900', color: '#1565C0' },
 
   section: { marginBottom: 32 },
   label: {
     fontSize: 13, fontWeight: '800', color: '#94A3B8',
     textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12,
   },
+
   inputContainer: {
     flexDirection: 'row', alignItems: 'center', backgroundColor: '#F8FAFB',
     borderRadius: 20, paddingHorizontal: 20, height: 64,
@@ -294,10 +312,10 @@ const styles = StyleSheet.create({
   currency: { fontSize: 20, fontWeight: '900', color: '#1E293B', marginRight: 10 },
   amountInput: { flex: 1, fontSize: 24, fontWeight: '900', color: '#1E293B' },
   maxBtn: {
-    backgroundColor: Colors.primaryLight, paddingHorizontal: 10, paddingVertical: 4,
-    borderRadius: 8, borderWidth: 1, borderColor: `${Colors.primary}40`,
+    backgroundColor: '#DBEAFE', paddingHorizontal: 10, paddingVertical: 4,
+    borderRadius: 8, borderWidth: 1, borderColor: '#93C5FD',
   },
-  maxBtnText: { fontSize: 10, fontWeight: '900', color: Colors.primary, letterSpacing: 0.5 },
+  maxBtnText: { fontSize: 10, fontWeight: '900', color: '#1D4ED8', letterSpacing: 0.5 },
 
   methodGrid: { flexDirection: 'row', gap: 10 },
   methodBtn: {
@@ -313,19 +331,24 @@ const styles = StyleSheet.create({
     fontSize: 15, fontWeight: '600', color: '#1E293B',
   },
 
-  disclaimer: { flexDirection: 'row', gap: 10, padding: 16, backgroundColor: '#F1F5F9', borderRadius: 16 },
-  disclaimerText: { flex: 1, fontSize: 12, color: '#64748B', lineHeight: 18, fontWeight: '500' },
+  infoBox: {
+    flexDirection: 'row', gap: 12, padding: 16,
+    backgroundColor: '#EFF6FF', borderRadius: 16,
+    borderWidth: 1, borderColor: '#BFDBFE',
+  },
+  infoTitle: { fontSize: 12, fontWeight: '800', color: '#1E40AF', marginBottom: 4 },
+  infoText: { fontSize: 12, color: '#1D4ED8', lineHeight: 18, fontWeight: '500' },
 
   footer: { padding: 24, paddingTop: 16, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
   withdrawBtn: {
-    backgroundColor: Colors.agri.sabz, height: 56, borderRadius: 16,
-    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: '#1565C0', height: 56, borderRadius: 16,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10,
   },
   withdrawBtnText: { color: '#fff', fontSize: 16, fontWeight: '900' },
 
   successContainer: {
     alignItems: 'center', justifyContent: 'center',
-    backgroundColor: Colors.primary, gap: 16, padding: 32,
+    backgroundColor: '#1565C0', gap: 16, padding: 32,
   },
   successIconWrap: {
     width: 100, height: 100, borderRadius: 50,
@@ -341,5 +364,5 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff', borderRadius: 16,
     paddingHorizontal: 40, paddingVertical: 14, marginTop: 8,
   },
-  successBtnText: { fontSize: 15, fontWeight: '900', color: Colors.primary },
+  successBtnText: { fontSize: 15, fontWeight: '900', color: '#1565C0' },
 });

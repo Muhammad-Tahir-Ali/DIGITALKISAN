@@ -7,6 +7,7 @@ import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
+import { useRouter } from 'expo-router';
 import { Colors } from '@/constants/colors';
 import userService, { WalletData } from '@/services/user.service';
 import orderService, { Order } from '@/services/order.service';
@@ -27,6 +28,7 @@ function startOfMonth() {
 
 export default function LogisticsEarningsScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const currentUser = useAuthStore((s) => s.user);
 
   const [wallet, setWallet]           = useState<WalletData | null>(null);
@@ -147,6 +149,16 @@ export default function LogisticsEarningsScreen() {
               <Text style={styles.bStatLabel}>Total Earned</Text>
             </View>
           </View>
+
+          {/* Withdraw button */}
+          <TouchableOpacity
+            style={styles.withdrawBtn}
+            onPress={() => router.push('/(logistics)/withdraw')}
+            activeOpacity={0.85}
+          >
+            <Feather name="arrow-up-circle" size={16} color="#1565C0" />
+            <Text style={styles.withdrawBtnText}>Withdraw Earnings</Text>
+          </TouchableOpacity>
         </LinearGradient>
 
         {/* Stat Cards */}
@@ -269,8 +281,13 @@ const styles = StyleSheet.create({
   balanceAmount: { color: '#fff', fontSize: 34, fontWeight: '900', marginBottom: 20 },
   balanceStats: {
     flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.15)',
-    borderRadius: 18, padding: 14,
+    borderRadius: 18, padding: 14, marginBottom: 14,
   },
+  withdrawBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: '#fff', borderRadius: 14, paddingVertical: 12,
+  },
+  withdrawBtnText: { fontSize: 14, fontWeight: '900', color: '#1565C0' },
   bStat: { flex: 1, alignItems: 'center' },
   bStatVal: { color: '#fff', fontSize: 14, fontWeight: '900' },
   bStatLabel: { color: 'rgba(255,255,255,0.65)', fontSize: 10, fontWeight: '700', marginTop: 2 },
