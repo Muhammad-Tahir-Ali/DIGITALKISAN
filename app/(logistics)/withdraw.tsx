@@ -1,27 +1,13 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, TextInput,
-  ScrollView, Alert, ActivityIndicator, Platform,
+  ScrollView, Alert, ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useForm, Controller } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import * as z from 'zod';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '@/constants/colors';
 import userService from '@/services/user.service';
-
-const withdrawSchema = z.object({
-  amount: z.string()
-    .min(1, 'Amount is required')
-    .refine(v => !isNaN(parseFloat(v)) && parseFloat(v) >= 500, 'Minimum withdrawal is ₨ 500'),
-  accountTitle: z.string().min(2, 'Account title is required'),
-  accountNumber: z.string().min(5, 'Account number is required'),
-  bankName: z.string().optional(),
-});
-
-type WithdrawForm = z.infer<typeof withdrawSchema>;
 
 const METHODS = [
   { id: 'jazzcash' as const,      label: 'JazzCash',      color: '#DB2777' },
@@ -32,11 +18,17 @@ const METHODS = [
 export default function LogisticsWithdrawalScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const [method, setMethod] = React.useState<'jazzcash' | 'easypaisa' | 'bank_transfer'>('jazzcash');
-  const [loading, setLoading] = React.useState(false);
-  const [submitted, setSubmitted] = React.useState(false);
-  const [availableBalance, setAvailableBalance] = React.useState<number | null>(null);
-  const [balanceLoading, setBalanceLoading] = React.useState(true);
+
+  const [method, setMethod] = useState<'jazzcash' | 'easypaisa' | 'bank_transfer'>('jazzcash');
+  const [amount, setAmount] = useState('');
+  const [accountTitle, setAccountTitle] = useState('');
+  const [accountNumber, setAccountNumber] = useState('');
+  const [bankName, setBankName] = useState('');
+
+  const [loading, setLoading] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const [availableBalance, setAvailableBalance] = useState<number | null>(null);
+  const [balanceLoading, setBalanceLoading] = useState(true);
 
   useEffect(() => {
     userService.getWallet()
@@ -45,14 +37,25 @@ export default function LogisticsWithdrawalScreen() {
       .finally(() => setBalanceLoading(false));
   }, []);
 
-  const { control, handleSubmit, formState: { errors } } = useForm<WithdrawForm>({
-    resolver: zodResolver(withdrawSchema),
-    defaultValues: { amount: '', accountTitle: '', accountNumber: '', bankName: '' },
-  });
+  const handlePress = async () => {
+    const requested = parseFloat(amount);
 
-  const onSubmit = async (data: WithdrawForm) => {
-    const requested = parseFloat(data.amount);
-
+    if (!amount || isNaN(requested) || requested < 500) {
+      Alert.alert('Invalid Amount', 'Please enter a valid amount (minimum ₨ 500).');
+      return;
+    }
+    if (!accountTitle.trim() || accountTitle.trim().length < 2) {
+      Alert.alert('Missing Field', 'Please enter your account title.');
+      return;
+    }
+    if (!accountNumber.trim() || accountNumber.trim().length < 5) {
+      Alert.alert('Missing Field', 'Please enter your account number.');
+      return;
+    }
+    if (method === 'bank_transfer' && !bankName.trim()) {
+      Alert.alert('Missing Field', 'Please enter your bank name.');
+      return;
+    }
     if (availableBalance !== null && requested > availableBalance) {
       Alert.alert(
         'Insufficient Balance',
@@ -61,25 +64,17 @@ export default function LogisticsWithdrawalScreen() {
       return;
     }
 
-    if (method === 'bank_transfer' && !data.bankName?.trim()) {
-      Alert.alert('Bank Name Required', 'Please enter your bank name for bank transfers.');
-      return;
-    }
-
     setLoading(true);
     try {
-      await userService.requestWithdrawal(
-        requested,
-        method,
-        {
-          accountTitle: data.accountTitle,
-          accountNumber: data.accountNumber,
-          bankName: method === 'bank_transfer' ? data.bankName : undefined,
-        }
-      );
+      await userService.requestWithdrawal(requested, method, {
+        accountTitle: accountTitle.trim(),
+        accountNumber: accountNumber.trim(),
+        bankName: method === 'bank_transfer' ? bankName.trim() : undefined,
+      });
       setSubmitted(true);
     } catch (error: any) {
-      Alert.alert('Error', error?.response?.data?.message ?? 'Failed to submit withdrawal request. Please try again.');
+      const msg = error?.response?.data?.message ?? 'Failed to submit withdrawal request. Please try again.';
+      Alert.alert('Error', msg);
     } finally {
       setLoading(false);
     }
@@ -138,32 +133,25 @@ export default function LogisticsWithdrawalScreen() {
         {/* Amount */}
         <View style={styles.section}>
           <Text style={styles.label}>Withdrawal Amount</Text>
-          <Controller
-            control={control}
-            name="amount"
-            render={({ field: { onChange, value } }) => (
-              <View style={[styles.inputContainer, errors.amount && styles.inputError]}>
-                <Text style={styles.currency}>₨</Text>
-                <TextInput
-                  style={styles.amountInput}
-                  placeholder="Min. 500"
-                  placeholderTextColor="#94A3B8"
-                  keyboardType="numeric"
-                  value={value}
-                  onChangeText={onChange}
-                />
-                {availableBalance !== null && (
-                  <TouchableOpacity
-                    onPress={() => onChange(Math.floor(availableBalance).toString())}
-                    style={styles.maxBtn}
-                  >
-                    <Text style={styles.maxBtnText}>MAX</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
+          <View style={styles.inputContainer}>
+            <Text style={styles.currency}>₨</Text>
+            <TextInput
+              style={styles.amountInput}
+              placeholder="Min. 500"
+              placeholderTextColor="#94A3B8"
+              keyboardType="numeric"
+              value={amount}
+              onChangeText={setAmount}
+            />
+            {availableBalance !== null && (
+              <TouchableOpacity
+                onPress={() => setAmount(Math.floor(availableBalance).toString())}
+                style={styles.maxBtn}
+              >
+                <Text style={styles.maxBtnText}>MAX</Text>
+              </TouchableOpacity>
             )}
-          />
-          {errors.amount && <Text style={styles.fieldError}>{errors.amount.message}</Text>}
+          </View>
         </View>
 
         {/* Payment Method */}
@@ -186,51 +174,28 @@ export default function LogisticsWithdrawalScreen() {
         {/* Account Details */}
         <View style={styles.section}>
           <Text style={styles.label}>Account Details</Text>
-
-          <Controller
-            control={control}
-            name="accountTitle"
-            render={({ field: { onChange, value } }) => (
-              <TextInput
-                style={[styles.textInput, errors.accountTitle && styles.inputError]}
-                placeholder="Account Title / Full Name"
-                placeholderTextColor="#94A3B8"
-                value={value}
-                onChangeText={onChange}
-              />
-            )}
+          <TextInput
+            style={styles.textInput}
+            placeholder="Account Title / Full Name"
+            placeholderTextColor="#94A3B8"
+            value={accountTitle}
+            onChangeText={setAccountTitle}
           />
-          {errors.accountTitle && <Text style={styles.fieldError}>{errors.accountTitle.message}</Text>}
-
-          <Controller
-            control={control}
-            name="accountNumber"
-            render={({ field: { onChange, value } }) => (
-              <TextInput
-                style={[styles.textInput, { marginTop: 12 }, errors.accountNumber && styles.inputError]}
-                placeholder={isMobileWallet ? 'Mobile Wallet Number (03xx-xxxxxxx)' : 'IBAN / Account Number'}
-                placeholderTextColor="#94A3B8"
-                keyboardType={isMobileWallet ? 'phone-pad' : 'default'}
-                value={value}
-                onChangeText={onChange}
-              />
-            )}
+          <TextInput
+            style={[styles.textInput, { marginTop: 12 }]}
+            placeholder={isMobileWallet ? 'Mobile Wallet Number (03xx-xxxxxxx)' : 'IBAN / Account Number'}
+            placeholderTextColor="#94A3B8"
+            keyboardType={isMobileWallet ? 'phone-pad' : 'default'}
+            value={accountNumber}
+            onChangeText={setAccountNumber}
           />
-          {errors.accountNumber && <Text style={styles.fieldError}>{errors.accountNumber.message}</Text>}
-
           {method === 'bank_transfer' && (
-            <Controller
-              control={control}
-              name="bankName"
-              render={({ field: { onChange, value } }) => (
-                <TextInput
-                  style={[styles.textInput, { marginTop: 12 }]}
-                  placeholder="Bank Name (e.g. HBL, UBL, Meezan)"
-                  placeholderTextColor="#94A3B8"
-                  value={value}
-                  onChangeText={onChange}
-                />
-              )}
+            <TextInput
+              style={[styles.textInput, { marginTop: 12 }]}
+              placeholder="Bank Name (e.g. HBL, UBL, Meezan)"
+              placeholderTextColor="#94A3B8"
+              value={bankName}
+              onChangeText={setBankName}
             />
           )}
         </View>
@@ -241,7 +206,7 @@ export default function LogisticsWithdrawalScreen() {
           <View style={{ flex: 1 }}>
             <Text style={styles.infoTitle}>Secure Manual Payout</Text>
             <Text style={styles.infoText}>
-              Withdrawal requests are reviewed and approved by our admin team. Funds are transferred to your account within 24–48 hours after approval.
+              Withdrawal requests are reviewed by our admin team. Funds are transferred within 24–48 hours after approval.
             </Text>
           </View>
         </View>
@@ -249,12 +214,10 @@ export default function LogisticsWithdrawalScreen() {
       </ScrollView>
 
       {/* Submit */}
-      <View style={[styles.footer, { paddingBottom: insets.bottom + (Platform.OS === 'ios' ? 108 : 88) }]}>
+      <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
         <TouchableOpacity
           style={[styles.withdrawBtn, loading && { opacity: 0.7 }]}
-          onPress={handleSubmit(onSubmit, () => {
-            Alert.alert('Missing Information', 'Please fill in all required fields before submitting.');
-          })}
+          onPress={handlePress}
           disabled={loading}
         >
           {loading ? (
@@ -285,7 +248,7 @@ const styles = StyleSheet.create({
   },
   headerTitle: { fontSize: 18, fontWeight: '900', color: Colors.textPrimary },
 
-  content: { padding: 24, paddingBottom: 120 },
+  content: { padding: 24, paddingBottom: 40 },
 
   balanceChip: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
@@ -296,7 +259,7 @@ const styles = StyleSheet.create({
   balanceChipText: { fontSize: 13, fontWeight: '600', color: Colors.textSecondary },
   balanceChipAmount: { fontWeight: '900', color: '#1565C0' },
 
-  section: { marginBottom: 32 },
+  section: { marginBottom: 28 },
   label: {
     fontSize: 13, fontWeight: '800', color: '#94A3B8',
     textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12,
@@ -307,8 +270,6 @@ const styles = StyleSheet.create({
     borderRadius: 20, paddingHorizontal: 20, height: 64,
     borderWidth: 1, borderColor: '#F1F5F9',
   },
-  inputError: { borderColor: Colors.error },
-  fieldError: { color: Colors.error, fontSize: 11, fontWeight: '600', marginTop: 4 },
   currency: { fontSize: 20, fontWeight: '900', color: '#1E293B', marginRight: 10 },
   amountInput: { flex: 1, fontSize: 24, fontWeight: '900', color: '#1E293B' },
   maxBtn: {

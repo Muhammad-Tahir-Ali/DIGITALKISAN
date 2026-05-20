@@ -1,48 +1,45 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View, Text, TouchableOpacity, KeyboardAvoidingView,
   Platform, ScrollView, Alert, TextInput,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { useForm, Controller } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import * as z from 'zod';
 import { ArrowLeft, Lock } from 'lucide-react-native';
 import { Colors } from '@/constants/colors';
 import { useAuth } from '@/hooks/useAuth';
 import { Button, PasswordInput } from '@/components/ui';
-
-const schema = z.object({
-  code: z.string()
-    .length(6, 'Code must be 6 digits')
-    .regex(/^\d{6}$/, 'Code must be numeric'),
-  newPassword: z.string().min(8, 'Password must be at least 8 characters'),
-  confirmPassword: z.string(),
-}).refine(d => d.newPassword === d.confirmPassword, {
-  path: ['confirmPassword'],
-  message: 'Passwords do not match',
-});
-type ResetForm = z.infer<typeof schema>;
 
 export default function ResetPasswordScreen() {
   const router = useRouter();
   const { email, role } = useLocalSearchParams<{ email?: string; role?: string }>();
   const { confirmPasswordReset, requestPasswordReset } = useAuth();
 
-  const { control, handleSubmit, formState: { errors, isSubmitting } } = useForm<ResetForm>({
-    resolver: zodResolver(schema),
-    defaultValues: { code: '', newPassword: '', confirmPassword: '' },
-  });
+  const [code, setCode] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const onSubmit = async (data: ResetForm) => {
+  const handleReset = async () => {
     if (!email) {
-      const msg = 'Missing email. Please start the reset flow again.';
-      if (Platform.OS === 'web') window.alert(msg);
-      else Alert.alert('Error', msg);
+      Alert.alert('Error', 'Missing email. Please start the reset flow again.');
       return;
     }
+    if (!code || code.length !== 6 || !/^\d{6}$/.test(code)) {
+      Alert.alert('Invalid Code', 'Please enter the 6-digit code sent to your email.');
+      return;
+    }
+    if (!newPassword || newPassword.length < 8) {
+      Alert.alert('Weak Password', 'Password must be at least 8 characters.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      Alert.alert('Mismatch', 'Passwords do not match. Please try again.');
+      return;
+    }
+
+    setLoading(true);
     try {
-      await confirmPasswordReset(email, data.code, data.newPassword);
+      await confirmPasswordReset(email, code, newPassword);
 
       const navigateHome = () => {
         if (role === 'farmer') router.replace('/(farmer)/dashboard');
@@ -50,17 +47,16 @@ export default function ResetPasswordScreen() {
         else router.replace('/(buyer)/home');
       };
 
-      const msg = 'Your password has been reset and you\'re signed back in.';
-      if (Platform.OS === 'web') {
-        window.alert(msg);
-        navigateHome();
-      } else {
-        Alert.alert('Password Updated', msg, [{ text: 'Continue', onPress: navigateHome }]);
-      }
+      Alert.alert(
+        'Password Updated',
+        "Your password has been reset and you're signed back in.",
+        [{ text: 'Continue', onPress: navigateHome }]
+      );
     } catch (err: any) {
-      const message = err?.response?.data?.message ?? 'Could not reset password.';
-      if (Platform.OS === 'web') window.alert(message);
-      else Alert.alert('Reset Failed', message);
+      const message = err?.response?.data?.message ?? 'Could not reset password. Please try again.';
+      Alert.alert('Reset Failed', message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -68,13 +64,9 @@ export default function ResetPasswordScreen() {
     if (!email) return;
     try {
       await requestPasswordReset(email);
-      const msg = 'A new code has been sent to your email.';
-      if (Platform.OS === 'web') window.alert(msg);
-      else Alert.alert('Code Resent', msg);
+      Alert.alert('Code Resent', 'A new 6-digit code has been sent to your email.');
     } catch {
-      const msg = 'Failed to resend code. Please try again.';
-      if (Platform.OS === 'web') window.alert(msg);
-      else Alert.alert('Error', msg);
+      Alert.alert('Error', 'Failed to resend code. Please try again.');
     }
   };
 
@@ -114,76 +106,58 @@ export default function ResetPasswordScreen() {
           </Text>
         ) : (
           <Text className="text-error text-sm mb-6">
-            No email provided. Please start over from the Forgot Password screen.
+            No email provided. Please go back to the Forgot Password screen.
           </Text>
         )}
 
         <Text className="text-textPrimary font-medium mb-2">Verification Code</Text>
-        <Controller
-          control={control}
-          name="code"
-          render={({ field: { onChange, value } }) => (
-            <TextInput
-              className="border rounded-xl h-14 px-4 bg-surface text-lg tracking-[0.25em] mb-1"
-              style={{ borderColor: errors.code ? Colors.error : Colors.border, color: Colors.textPrimary }}
-              placeholder="XXXXXX"
-              placeholderTextColor={Colors.textTertiary}
-              keyboardType="number-pad"
-              maxLength={6}
-              value={value}
-              onChangeText={(v) => onChange(v.replace(/\D/g, ''))}
-            />
-          )}
+        <TextInput
+          className="border rounded-xl h-14 px-4 bg-surface text-lg tracking-[0.25em] mb-4"
+          style={{ borderColor: Colors.border, color: Colors.textPrimary }}
+          placeholder="XXXXXX"
+          placeholderTextColor={Colors.textTertiary}
+          keyboardType="number-pad"
+          maxLength={6}
+          value={code}
+          onChangeText={(v) => setCode(v.replace(/\D/g, ''))}
         />
-        {errors.code && (
-          <Text className="text-error text-xs mb-3 font-medium">{errors.code.message}</Text>
-        )}
 
-        <View className="mt-5">
-          <Controller
-            control={control}
-            name="newPassword"
-            render={({ field: { onChange, onBlur, value } }) => (
-              <PasswordInput
-                label="New Password"
-                icon="lock"
-                placeholder="Min. 8 characters"
-                error={errors.newPassword?.message}
-                onBlur={onBlur}
-                onChangeText={onChange}
-                value={value}
-              />
-            )}
+        <View className="mt-1">
+          <PasswordInput
+            label="New Password"
+            icon="lock"
+            placeholder="Min. 8 characters"
+            value={newPassword}
+            onChangeText={setNewPassword}
           />
         </View>
 
-        <Controller
-          control={control}
-          name="confirmPassword"
-          render={({ field: { onChange, onBlur, value } }) => (
-            <PasswordInput
-              label="Confirm New Password"
-              icon="lock"
-              placeholder="Re-enter the new password"
-              error={errors.confirmPassword?.message}
-              onBlur={onBlur}
-              onChangeText={onChange}
-              value={value}
-            />
-          )}
+        <PasswordInput
+          label="Confirm New Password"
+          icon="lock"
+          placeholder="Re-enter the new password"
+          value={confirmPassword}
+          onChangeText={setConfirmPassword}
         />
 
         <Button
           label="Reset Password & Sign In"
-          onPress={handleSubmit(onSubmit)}
-          loading={isSubmitting}
+          onPress={handleReset}
+          loading={loading}
           fullWidth
           size="xl"
           style={{ backgroundColor: Colors.primary, borderRadius: 16, marginTop: 16, marginBottom: 16 }}
         />
 
-        <TouchableOpacity className="self-center mt-2 mb-8" onPress={handleResend} disabled={!email}>
-          <Text className="text-sm font-bold" style={{ color: email ? Colors.primary : Colors.textTertiary }}>
+        <TouchableOpacity
+          className="self-center mt-2 mb-8"
+          onPress={handleResend}
+          disabled={!email}
+        >
+          <Text
+            className="text-sm font-bold"
+            style={{ color: email ? Colors.primary : Colors.textTertiary }}
+          >
             Didn't get the code? Resend
           </Text>
         </TouchableOpacity>

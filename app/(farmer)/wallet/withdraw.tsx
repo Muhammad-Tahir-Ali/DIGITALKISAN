@@ -45,15 +45,21 @@ export default function FarmerWithdrawalScreen() {
       .finally(() => setBalanceLoading(false));
   }, []);
 
-  const { control, handleSubmit, formState: { errors } } = useForm<WithdrawForm>({
+  const { control, trigger, getValues, formState: { errors } } = useForm<WithdrawForm>({
     resolver: zodResolver(withdrawSchema),
     defaultValues: { amount: '', accountTitle: '', accountNumber: '', bankName: '' },
   });
 
-  const onSubmit = async (data: WithdrawForm) => {
+  const handlePress = async () => {
+    const isValid = await trigger();
+    if (!isValid) {
+      Alert.alert('Missing Information', 'Please fill in all required fields correctly.');
+      return;
+    }
+
+    const data = getValues();
     const requested = parseFloat(data.amount);
 
-    // Guard against overdraw if we know the balance
     if (availableBalance !== null && requested > availableBalance) {
       Alert.alert(
         'Insufficient Balance',
@@ -243,7 +249,7 @@ export default function FarmerWithdrawalScreen() {
       <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
         <TouchableOpacity
           style={[styles.withdrawBtn, loading && { opacity: 0.7 }]}
-          onPress={handleSubmit(onSubmit)}
+          onPress={handlePress}
           disabled={loading}
         >
           {loading

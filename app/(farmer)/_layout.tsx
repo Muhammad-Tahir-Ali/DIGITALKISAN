@@ -61,7 +61,7 @@ export default function FarmerLayout() {
       <Tabs.Screen name="products/add" options={{ href: null }} />
       <Tabs.Screen name="orders/[id]" options={{ href: null }} />
       <Tabs.Screen name="wallet/history" options={{ href: null }} />
-      <Tabs.Screen name="wallet/withdraw" options={{ href: null }} />
+      <Tabs.Screen name="wallet/withdraw" options={{ href: null, tabBarStyle: { display: 'none' } }} />
       <Tabs.Screen name="under-review" options={{ href: null }} />
       <Tabs.Screen name="notifications" options={{ href: null }} />
       <Tabs.Screen name="resubmit-docs" options={{ href: null }} />

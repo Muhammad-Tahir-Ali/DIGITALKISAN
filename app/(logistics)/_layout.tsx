@@ -101,10 +101,10 @@ export default function LogisticsLayout() {
         name="vehicle"
         options={{ href: null }}
       />
-      {/* Withdrawal screen — accessed from Earnings tab */}
+      {/* Withdrawal screen — accessed from Earnings tab, tab bar hidden */}
       <Tabs.Screen
         name="withdraw"
-        options={{ href: null }}
+        options={{ href: null, tabBarStyle: { display: 'none' } }}
       />
     </Tabs>
   );

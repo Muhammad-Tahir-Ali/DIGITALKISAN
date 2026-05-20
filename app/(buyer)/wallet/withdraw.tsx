@@ -34,6 +34,7 @@ export default function BuyerWithdrawScreen() {
   const insets = useSafeAreaInsets();
   const [method, setMethod] = React.useState<'jazzcash' | 'easypaisa' | 'bank_transfer'>('jazzcash');
   const [loading, setLoading] = React.useState(false);
+  const [submitted, setSubmitted] = React.useState(false);
   const [availableBalance, setAvailableBalance] = React.useState<number | null>(null);
   const [balanceLoading, setBalanceLoading] = React.useState(true);
 
@@ -44,25 +45,27 @@ export default function BuyerWithdrawScreen() {
       .finally(() => setBalanceLoading(false));
   }, []);
 
-  const { control, handleSubmit, formState: { errors } } = useForm<WithdrawForm>({
+  const { control, trigger, getValues, formState: { errors } } = useForm<WithdrawForm>({
     resolver: zodResolver(withdrawSchema),
     defaultValues: { amount: '', accountTitle: '', accountNumber: '', bankName: '' },
   });
 
-  const showErr = (msg: string) => {
-    if (Platform.OS === 'web') window.alert(msg);
-    else Alert.alert('Error', msg);
-  };
+  const handlePress = async () => {
+    const isValid = await trigger();
+    if (!isValid) {
+      Alert.alert('Missing Information', 'Please fill in all required fields correctly.');
+      return;
+    }
 
-  const onSubmit = async (data: WithdrawForm) => {
+    const data = getValues();
     const requested = parseFloat(data.amount);
 
     if (availableBalance !== null && requested > availableBalance) {
-      showErr(`You requested ₨ ${requested.toLocaleString()} but your balance is ₨ ${availableBalance.toLocaleString()}.`);
+      Alert.alert('Insufficient Balance', `You requested ₨ ${requested.toLocaleString()} but your balance is ₨ ${availableBalance.toLocaleString()}.`);
       return;
     }
     if (method === 'bank_transfer' && !data.bankName?.trim()) {
-      showErr('Please enter your bank name for bank transfers.');
+      Alert.alert('Bank Name Required', 'Please enter your bank name for bank transfers.');
       return;
     }
 
@@ -73,21 +76,37 @@ export default function BuyerWithdrawScreen() {
         accountNumber: data.accountNumber,
         bankName: method === 'bank_transfer' ? data.bankName : undefined,
       });
-      const msg = 'Your withdrawal request has been submitted. Funds will be processed within 24–48 hours.';
-      if (Platform.OS === 'web') {
-        window.alert(msg);
-        router.back();
-      } else {
-        Alert.alert('Request Submitted', msg, [{ text: 'OK', onPress: () => router.back() }]);
-      }
+      setSubmitted(true);
     } catch (e: any) {
-      showErr(e?.response?.data?.message ?? 'Failed to submit withdrawal request.');
+      Alert.alert('Error', e?.response?.data?.message ?? 'Failed to submit withdrawal request.');
     } finally {
       setLoading(false);
     }
   };
 
   const isMobileWallet = method === 'jazzcash' || method === 'easypaisa';
+
+  if (submitted) {
+    return (
+      <View style={[styles.container, styles.successContainer, { paddingTop: insets.top, paddingBottom: insets.bottom + 32 }]}>
+        <View style={styles.successIconWrap}>
+          <Feather name="check-circle" size={64} color="#fff" />
+        </View>
+        <Text style={styles.successTitle}>Request Submitted!</Text>
+        <Text style={styles.successSub}>
+          Your withdrawal request has been received.{'\n'}
+          Our team will transfer funds to your account within 24–48 hours.
+        </Text>
+        <TouchableOpacity
+          style={styles.successBtn}
+          onPress={() => router.back()}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.successBtnText}>Back to Wallet</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -226,7 +245,7 @@ export default function BuyerWithdrawScreen() {
       <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
         <TouchableOpacity
           style={[styles.submitBtn, loading && { opacity: 0.7 }]}
-          onPress={handleSubmit(onSubmit)}
+          onPress={handlePress}
           disabled={loading}
         >
           {loading
@@ -310,4 +329,24 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   submitBtnText: { color: '#fff', fontSize: 16, fontWeight: '900' },
+
+  successContainer: {
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: Colors.primary, gap: 16, padding: 32,
+  },
+  successIconWrap: {
+    width: 100, height: 100, borderRadius: 50,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center', justifyContent: 'center', marginBottom: 8,
+  },
+  successTitle: { fontSize: 26, fontWeight: '900', color: '#fff', textAlign: 'center' },
+  successSub: {
+    fontSize: 14, color: 'rgba(255,255,255,0.85)', textAlign: 'center',
+    lineHeight: 22, fontWeight: '500', marginBottom: 8,
+  },
+  successBtn: {
+    backgroundColor: '#fff', borderRadius: 16,
+    paddingHorizontal: 40, paddingVertical: 14, marginTop: 8,
+  },
+  successBtnText: { fontSize: 15, fontWeight: '900', color: Colors.primary },
 });

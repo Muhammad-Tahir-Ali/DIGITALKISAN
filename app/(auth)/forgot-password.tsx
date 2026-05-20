@@ -1,56 +1,50 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View, Text, TouchableOpacity, KeyboardAvoidingView,
   Platform, ScrollView, Alert,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { useForm, Controller } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import * as z from 'zod';
 import { ArrowLeft, Mail } from 'lucide-react-native';
 import { Colors } from '@/constants/colors';
 import { useAuth } from '@/hooks/useAuth';
 import { Button, Input } from '@/components/ui';
-
-const schema = z.object({
-  email: z.string().email('Please enter a valid email address'),
-});
-type ForgotForm = z.infer<typeof schema>;
 
 export default function ForgotPasswordScreen() {
   const router = useRouter();
   const { role, email: prefillEmail } = useLocalSearchParams<{ role?: string; email?: string }>();
   const { requestPasswordReset } = useAuth();
 
-  const { control, handleSubmit, formState: { errors, isSubmitting }, getValues } = useForm<ForgotForm>({
-    resolver: zodResolver(schema),
-    defaultValues: { email: prefillEmail ?? '' },
-  });
+  const [email, setEmail] = useState(prefillEmail ?? '');
+  const [loading, setLoading] = useState(false);
 
-  const onSubmit = async (data: ForgotForm) => {
+  const handleSend = async () => {
+    const trimmed = email.trim().toLowerCase();
+    if (!trimmed || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+      Alert.alert('Invalid Email', 'Please enter a valid email address.');
+      return;
+    }
+
+    setLoading(true);
     try {
-      const response = await requestPasswordReset(data.email);
+      const response = await requestPasswordReset(trimmed);
+
       const goNext = () =>
         router.push({
           pathname: '/(auth)/reset-password' as any,
-          params: { email: data.email, role: role ?? '' },
+          params: { email: trimmed, role: role ?? '' },
         });
 
-      let msg = `If an account exists for ${data.email}, a 6-digit reset code has been sent. Check your inbox (and spam folder).`;
-      if (__DEV__ && response && response.devCode) {
-        msg += `\n\n[DEV MODE] Your code is: ${response.devCode}`;
+      let msg = `If an account exists for ${trimmed}, a 6-digit reset code has been sent. Check your inbox (and spam folder).`;
+      if (__DEV__ && response?.devCode) {
+        msg += `\n\n[DEV] Your code is: ${response.devCode}`;
       }
 
-      if (Platform.OS === 'web') {
-        window.alert(msg);
-        goNext();
-      } else {
-        Alert.alert('Check your email', msg, [{ text: 'Enter Code', onPress: goNext }]);
-      }
+      Alert.alert('Check your email', msg, [{ text: 'Enter Code', onPress: goNext }]);
     } catch (err: any) {
       const message = err?.response?.data?.message ?? 'Something went wrong. Try again later.';
-      if (Platform.OS === 'web') window.alert(message);
-      else Alert.alert('Error', message);
+      Alert.alert('Error', message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -87,29 +81,21 @@ export default function ForgotPasswordScreen() {
           We'll send you a reset code if we find a matching account.
         </Text>
 
-        <Controller
-          control={control}
-          name="email"
-          render={({ field: { onChange, onBlur, value } }) => (
-            <Input
-              label="Email Address"
-              icon="mail"
-              placeholder="you@example.com"
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
-              error={errors.email?.message}
-              onBlur={onBlur}
-              onChangeText={onChange}
-              value={value}
-            />
-          )}
+        <Input
+          label="Email Address"
+          icon="mail"
+          placeholder="you@example.com"
+          keyboardType="email-address"
+          autoCapitalize="none"
+          autoCorrect={false}
+          value={email}
+          onChangeText={setEmail}
         />
 
         <Button
           label="Send Reset Code"
-          onPress={handleSubmit(onSubmit)}
-          loading={isSubmitting}
+          onPress={handleSend}
+          loading={loading}
           fullWidth
           size="xl"
           style={{ backgroundColor: Colors.primary, borderRadius: 16, marginTop: 24, marginBottom: 24 }}
@@ -117,10 +103,12 @@ export default function ForgotPasswordScreen() {
 
         <TouchableOpacity
           className="self-center mt-2"
-          onPress={() => router.push({
-            pathname: '/(auth)/reset-password' as any,
-            params: { email: getValues('email') ?? prefillEmail ?? '', role: role ?? '' },
-          })}
+          onPress={() =>
+            router.push({
+              pathname: '/(auth)/reset-password' as any,
+              params: { email: email.trim() || prefillEmail || '', role: role ?? '' },
+            })
+          }
         >
           <Text className="text-sm font-bold" style={{ color: Colors.primary }}>
             I already have a code
