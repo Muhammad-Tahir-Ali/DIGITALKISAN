@@ -76,7 +76,11 @@
       "PowerShell(Set-Location \"C:\\\\Users\\\\Muhammad Tahir\\\\Desktop\\\\DIGITAL KISAN\\\\backend\"; Start-Process -FilePath \"node\" -ArgumentList \"src/server.js\" -PassThru -RedirectStandardOutput \"$env:TEMP\\\\dk-backend-stdout.txt\" -RedirectStandardError \"$env:TEMP\\\\dk-backend-stderr.txt\")",
       "PowerShell(Get-Content *)",
       "PowerShell(Get-ChildItem \"C:\\\\Users\\\\Muhammad Tahir\\\\Desktop\\\\DIGITAL KISAN\\\\DigitalKisan\" -Name | Where-Object { $_ -match \"app.config|app.json\" })",
-      "Bash(python -m json.tool)"
+      "Bash(python -m json.tool)",
+      "Bash(grep -Hm1 ^description: 'C:/Users/Muhammad Tahir/Desktop/DIGITAL KISAN/.claude/skills/*/SKILL.md')",
+      "PowerShell(Start-Process powershell -ArgumentList '-NoExit', '-Command', 'Set-Location \"C:\\\\Users\\\\Muhammad Tahir\\\\Desktop\\\\DIGITAL KISAN\\\\backend\"; npm run dev')",
+      "PowerShell(Start-Process powershell -ArgumentList '-NoExit', '-Command', 'Set-Location \"C:\\\\Users\\\\Muhammad Tahir\\\\Desktop\\\\DIGITAL KISAN\\\\DigitalKisan\"; npm start')",
+      "PowerShell(Start-Process powershell -ArgumentList '-NoExit', '-Command', 'Set-Location \"C:\\\\Users\\\\Muhammad Tahir\\\\Desktop\\\\DIGITAL KISAN\\\\admin\"; npm run dev')"
     ]
   },
   "hooks": {
