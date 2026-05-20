@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity, StyleSheet,
   RefreshControl, Alert, Platform, ActivityIndicator,
@@ -28,14 +28,18 @@ export default function MyProductsScreen() {
   const [error, setError] = useState<string | null>(null);
   const [retryingId, setRetryingId] = useState<string | null>(null);
   const [statusChecking, setStatusChecking] = useState(false);
+  const lastFetchRef = useRef<number>(0);
 
   const fetchProducts = useCallback(async (isRefresh = false) => {
+    const now = Date.now();
+    if (!isRefresh && lastFetchRef.current > 0 && now - lastFetchRef.current < 30_000) return;
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
     setError(null);
     try {
       const data = await productService.getMyProducts();
       setProducts(data);
+      lastFetchRef.current = Date.now();
     } catch (e: any) {
       setError(e?.response?.data?.message ?? 'Failed to load products');
     } finally {

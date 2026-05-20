@@ -420,7 +420,7 @@ export default function LogisticsMap() {
             <Text style={styles.liveText}>LIVE</Text>
           </View>
         </View>
-        <TouchableOpacity style={styles.refreshBtn} onPress={fetchJobs}>
+        <TouchableOpacity style={styles.refreshBtn} onPress={() => fetchJobs(true)}>
           <Feather name="refresh-cw" size={16} color={Colors.primary} />
         </TouchableOpacity>
       </View>

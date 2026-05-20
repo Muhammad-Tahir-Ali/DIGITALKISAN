@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity,
   StyleSheet, ActivityIndicator,
@@ -54,8 +54,11 @@ export default function FarmerOrdersScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError]       = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabKey>('new');
+  const lastFetchRef = useRef<number>(0);
 
   const fetchOrders = useCallback(async (isRefresh = false, silent = false) => {
+    const now = Date.now();
+    if (!isRefresh && !silent && lastFetchRef.current > 0 && now - lastFetchRef.current < 30_000) return;
     if (!silent) {
       if (isRefresh) setRefreshing(true); else setLoading(true);
       setError(null);
@@ -63,6 +66,7 @@ export default function FarmerOrdersScreen() {
     try {
       const data = await orderService.getMyOrders();
       setOrders(data);
+      lastFetchRef.current = Date.now();
     } catch (e: any) {
       if (!silent) setError(e?.response?.data?.message ?? 'Failed to load orders');
     } finally {

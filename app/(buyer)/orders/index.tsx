@@ -18,8 +18,8 @@ const STATUS_CONFIG: Record<ApiOrderStatus, { label: string; text: string; bg: s
   pending:    { label: 'Pending',        text: '#92400E', bg: '#FEF3C7', dot: '#F59E0B' },
   paid:       { label: 'Confirmed',      text: '#1E40AF', bg: '#DBEAFE', dot: '#3B82F6' },
   bidding:    { label: 'Finding Rider',  text: '#6B21A8', bg: '#F3E8FF', dot: '#A855F7' },
-  in_transit: { label: 'On the Way',     text: '#065F46', bg: '#D1FAE5', dot: '#10B981' },
-  picked_up:  { label: 'Picked Up',      text: '#92400E', bg: '#FEF3C7', dot: '#F59E0B' },
+  in_transit: { label: 'Logistics Assigned', text: '#1E40AF', bg: '#DBEAFE', dot: '#3B82F6' },
+  picked_up:  { label: 'On the Way',        text: '#065F46', bg: '#D1FAE5', dot: '#10B981' },
   reached:    { label: 'Rider Arrived',  text: '#5B21B6', bg: '#EDE9FE', dot: '#8B5CF6' },
   delivered:  { label: 'Delivered',      text: '#065F46', bg: '#D1FAE5', dot: '#10B981' },
   disputed:   { label: 'Disputed',       text: '#991B1B', bg: '#FEE2E2', dot: '#EF4444' },
@@ -81,8 +81,12 @@ export default function BuyerOrdersScreen() {
 
   const CACHE_KEY = 'buyer_orders_cache_v2';
   const hasDataRef = useRef(false);
+  const lastFetchRef = useRef<number>(0);
 
   const fetchOrders = useCallback(async (isRefresh = false, silent = false) => {
+    const now = Date.now();
+    if (!isRefresh && !silent && lastFetchRef.current > 0 && now - lastFetchRef.current < 10_000) return;
+
     if (!silent && !isRefresh) {
       try {
         const cached = await AsyncStorage.getItem(CACHE_KEY);
@@ -103,6 +107,7 @@ export default function BuyerOrdersScreen() {
       const data = await orderService.getMyOrders();
       setOrders(data);
       hasDataRef.current = true;
+      lastFetchRef.current = Date.now();
       AsyncStorage.setItem(CACHE_KEY, JSON.stringify(data)).catch(() => {});
     } catch (e: any) {
       if (!silent) setError(e?.response?.data?.message ?? 'Failed to load orders');

@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import {
   View, Text, ScrollView, StyleSheet,
   TouchableOpacity, RefreshControl,
@@ -19,8 +19,11 @@ export default function FarmerWalletScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const lastFetchRef = useRef<number>(0);
 
   const fetchAll = useCallback(async (isRefresh = false) => {
+    const now = Date.now();
+    if (!isRefresh && lastFetchRef.current > 0 && now - lastFetchRef.current < 30_000) return;
     if (isRefresh) setRefreshing(true); else setLoading(true);
     setError(null);
     try {
@@ -34,6 +37,7 @@ export default function FarmerWalletScreen() {
         .filter(tx => tx.type === 'escrow_release' && tx.direction === 'credit')
         .slice(0, 10);
       setRecentEarnings(earnings);
+      lastFetchRef.current = Date.now();
     } catch (e: any) {
       setError(e?.response?.data?.message ?? 'Failed to load wallet. Pull down to retry.');
     } finally {

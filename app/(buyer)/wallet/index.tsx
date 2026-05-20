@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import {
   View, Text, ScrollView, StyleSheet,
   TouchableOpacity, RefreshControl,
@@ -18,7 +18,7 @@ const ESCROW_STATUSES: Order['status'][] = ['paid', 'bidding', 'in_transit'];
 const STATUS_LABEL: Record<string, string> = {
   paid:       'Awaiting Farmer',
   bidding:    'Finding Rider',
-  in_transit: 'On the Way',
+  in_transit: 'Logistics Assigned',
 };
 
 export default function BuyerWalletScreen() {
@@ -29,8 +29,11 @@ export default function BuyerWalletScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const lastFetchRef = useRef<number>(0);
 
   const fetchAll = useCallback(async (isRefresh = false) => {
+    const now = Date.now();
+    if (!isRefresh && lastFetchRef.current > 0 && now - lastFetchRef.current < 10_000) return;
     if (isRefresh) setRefreshing(true); else setLoading(true);
     setError(null);
     try {
@@ -40,6 +43,7 @@ export default function BuyerWalletScreen() {
       ]);
       setWallet(walletData);
       setEscrowOrders(orders.filter(o => ESCROW_STATUSES.includes(o.status)));
+      lastFetchRef.current = Date.now();
     } catch (e: any) {
       setError(e?.response?.data?.message ?? 'Failed to load wallet');
     } finally {

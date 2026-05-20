@@ -50,7 +50,7 @@ export default function ResubmitDocsScreen() {
         });
       } else {
         const b64 = await FileSystem.readAsStringAsync(asset.uri, {
-          encoding: FileSystem.EncodingType.Base64,
+          encoding: 'base64',
         });
         base64Uri = `data:${mimeType};base64,${b64}`;
       }

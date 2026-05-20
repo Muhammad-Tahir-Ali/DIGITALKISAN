@@ -44,7 +44,7 @@ function DeliveryStepper({ status }: { status: OrderStatus }) {
     <View style={styles.stepper}>
       {STEPS.map((step, i) => {
         const done   = i < current || status === step.key;
-        const active = status === 'in_transit' ? i === 0 : stepIndex(status) === i - 1 || (i === 0 && status === 'in_transit');
+        const active = status === 'in_transit' ? i === 0 : stepIndex(status) === i - 1;
         const isDone = i <= current;
 
         return (
@@ -363,13 +363,17 @@ export default function ActiveDeliveries() {
   const pendingActionRef = useRef<{ order: Order; target: OrderStatus } | null>(null);
 
   const locationWatcher = useRef<Location.LocationSubscription | null>(null);
+  const lastFetchRef = useRef<number>(0);
 
   const fetchOrders = useCallback(async (isRefresh = false) => {
+    const now = Date.now();
+    if (!isRefresh && lastFetchRef.current > 0 && now - lastFetchRef.current < 10_000) return;
     if (isRefresh) setRefreshing(true); else setLoading(true);
     setError(null);
     try {
       const data = await orderService.getMyOrders();
       setOrders(data);
+      lastFetchRef.current = Date.now();
     } catch (e: any) {
       setError(e?.response?.data?.message ?? 'Failed to load deliveries');
     } finally {

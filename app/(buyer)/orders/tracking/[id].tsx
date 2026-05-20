@@ -15,10 +15,10 @@ const ACTIVE_STATUSES: OrderStatus[] = ['in_transit', 'picked_up', 'reached'];
 
 // ── Delivery steps shown to the buyer ─────────────────────────────────────────
 const STEPS: { key: OrderStatus; label: string; icon: React.ComponentProps<typeof Feather>['name']; desc: string }[] = [
-  { key: 'in_transit', label: 'In Transit',  icon: 'truck',        desc: 'Rider is heading to pickup'  },
-  { key: 'picked_up',  label: 'Picked Up',   icon: 'package',      desc: 'Product collected from farm' },
-  { key: 'reached',    label: 'Reached',     icon: 'map-pin',      desc: 'Rider is at your location'   },
-  { key: 'delivered',  label: 'Delivered',   icon: 'check-circle', desc: 'Order successfully delivered' },
+  { key: 'in_transit', label: 'Assigned',   icon: 'truck',        desc: 'Rider assigned, heading to pickup'       },
+  { key: 'picked_up',  label: 'On the Way', icon: 'package',      desc: 'Product collected, heading to you'       },
+  { key: 'reached',    label: 'Reached',    icon: 'map-pin',      desc: 'Rider is at your location'               },
+  { key: 'delivered',  label: 'Delivered',  icon: 'check-circle', desc: 'Order successfully delivered'            },
 ];
 
 function stepIndexOf(status: OrderStatus) {

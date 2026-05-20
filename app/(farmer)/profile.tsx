@@ -85,6 +85,7 @@ export default function FarmerProfile() {
   const [products, setProducts] = React.useState<Product[]>([]);
   const [reviews, setReviews]   = React.useState<Review[]>([]);
   const [loading, setLoading]   = React.useState(true);
+  const lastFetchRef = React.useRef<number>(0);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -95,20 +96,23 @@ export default function FarmerProfile() {
         setLangLabel(code === 'ur' ? 'اردو' : 'English');
       });
 
-      // Fetch products and reviews
+      const now = Date.now();
+      if (lastFetchRef.current > 0 && now - lastFetchRef.current < 30_000) return;
+
       setLoading(true);
       Promise.all([
         productService.getMyProducts(),
-        reviewService.getForTarget(user?._id || '', 'User')
+        reviewService.getForTarget(user?.id || '', 'User')
       ]).then(([prods, revs]) => {
         setProducts(prods);
         setReviews(revs);
+        lastFetchRef.current = Date.now();
       }).catch(err => {
         console.error('Farmer Profile Load Error:', err);
       }).finally(() => {
         setLoading(false);
       });
-    }, [user?._id])
+    }, [user?.id])
   );
 
   const toggleNotifs = async (v: boolean) => {

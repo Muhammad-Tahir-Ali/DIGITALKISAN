@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
   RefreshControl, ActivityIndicator,
@@ -36,8 +36,11 @@ export default function LogisticsEarningsScreen() {
   const [loading, setLoading]         = useState(true);
   const [refreshing, setRefreshing]   = useState(false);
   const [error, setError]             = useState<string | null>(null);
+  const lastFetchRef = useRef<number>(0);
 
   const fetchAll = useCallback(async (isRefresh = false) => {
+    const now = Date.now();
+    if (!isRefresh && lastFetchRef.current > 0 && now - lastFetchRef.current < 10_000) return;
     if (isRefresh) setRefreshing(true); else setLoading(true);
     setError(null);
     try {
@@ -51,6 +54,7 @@ export default function LogisticsEarningsScreen() {
         (o) => o.status === 'delivered'
       );
       setDeliveries(done);
+      lastFetchRef.current = Date.now();
     } catch (e: any) {
       setError(e?.response?.data?.message ?? 'Failed to load earnings');
     } finally {

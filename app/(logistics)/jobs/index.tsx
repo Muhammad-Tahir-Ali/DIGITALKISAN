@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   View, Text, FlatList, TouchableOpacity,
@@ -240,8 +240,11 @@ export default function LogisticsJobs() {
   const [error, setError] = useState<string | null>(null);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
+  const lastFetchRef = useRef<number>(0);
 
   const fetchJobs = useCallback(async (isRefresh = false, silent = false) => {
+    const now = Date.now();
+    if (!isRefresh && !silent && lastFetchRef.current > 0 && now - lastFetchRef.current < 10_000) return;
     if (!silent) {
       if (isRefresh) setRefreshing(true);
       else setLoading(true);
@@ -262,6 +265,7 @@ export default function LogisticsJobs() {
         }
       });
       setMyBidMap(map);
+      lastFetchRef.current = Date.now();
     } catch (e: any) {
       if (!silent) setError(e?.response?.data?.message ?? 'Failed to load jobs.');
     } finally {

@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, Alert, Platform,
   StyleSheet, ScrollView, Switch, ActivityIndicator,
@@ -41,9 +41,12 @@ export default function LogisticsProfile() {
   const [isOnline, setIsOnline]           = useState<boolean>(false);
   const [vehicleInfo, setVehicleInfo]     = useState<VehicleInfo | null>(null);
   const [togglingStatus, setTogglingStatus] = useState(false);
+  const lastFetchRef = useRef<number>(0);
 
   useFocusEffect(useCallback(() => {
     let cancelled = false;
+    const now = Date.now();
+    if (lastFetchRef.current > 0 && now - lastFetchRef.current < 10_000) return;
     const load = async () => {
       try {
         const [walletData, profile, orders] = await Promise.all([
@@ -60,6 +63,7 @@ export default function LogisticsProfile() {
             : null,
         );
         setDeliveryCount(orders.filter((o) => o.status === 'delivered').length);
+        lastFetchRef.current = Date.now();
       } catch { /* silently ignore — stats are non-critical */ }
     };
     load();
